@@ -15,10 +15,12 @@ def initialize():
             started_at REAL, finished_at REAL, heartbeat_at REAL,
             exit_code INTEGER, error TEXT,
             ray_submission_id TEXT UNIQUE, reserved INTEGER NOT NULL DEFAULT 0,
-            submitted INTEGER NOT NULL DEFAULT 0, stop_reason TEXT,
+            submitted INTEGER NOT NULL DEFAULT 0, stop_reason TEXT, stop_requested_at REAL,
             running_seen_at REAL
         )''')
         db.execute('CREATE INDEX IF NOT EXISTS jobs_queue ON jobs(status, priority DESC, created_at)')
+        if 'stop_requested_at' not in {row[1] for row in db.execute('PRAGMA table_info(jobs)')}:
+            db.execute('ALTER TABLE jobs ADD COLUMN stop_requested_at REAL')
 
 
 @contextmanager

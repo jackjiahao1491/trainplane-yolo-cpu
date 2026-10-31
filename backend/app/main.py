@@ -29,7 +29,7 @@ app.add_middleware(CORSMiddleware, allow_origins=['http://127.0.0.1:5173', 'http
 
 
 def public(job):
-    out = {k: v for k, v in job.items() if k not in {'reserved', 'submitted', 'running_seen_at'}}
+    out = {k: v for k, v in job.items() if k not in {'reserved', 'submitted', 'running_seen_at', 'stop_requested_at'}}
     for field in ['created_at', 'started_at', 'finished_at', 'heartbeat_at']:
         if out[field] is not None:
             out[field] = datetime.fromtimestamp(out[field], timezone.utc).isoformat()
@@ -129,7 +129,7 @@ def logs(job_id: str, offset: int = Query(0, ge=0), limit: int = Query(65536, ge
         try:
             content = chunk.decode('utf-8')
         except UnicodeDecodeError as exc:
-            if exc.reason == 'unexpected end of data' and exc.end == len(chunk) and offset+len(chunk) < size:
+            if exc.reason == 'unexpected end of data' and exc.end == len(chunk) and (offset+len(chunk) < size or job['status'] not in TERMINAL):
                 chunk = chunk[:exc.start]
             content = chunk.decode('utf-8', errors='replace')
         next_offset = offset + len(chunk)

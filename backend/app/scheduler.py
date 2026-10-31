@@ -19,6 +19,13 @@ TERMINAL = {'succeeded', 'failed', 'cancelled'}
 RAY_TERMINAL = {'SUCCEEDED', 'FAILED', 'STOPPED'}
 
 
+class BoundedJobClient(JobSubmissionClient):
+    """Ray 2.40 forwards request kwargs, but leaves HTTP waits unbounded by default."""
+    def _do_request(self, method, endpoint, **kwargs):
+        kwargs.setdefault('timeout', (2, 5))
+        return super()._do_request(method, endpoint, **kwargs)
+
+
 def job_dir(job):
     return config.DATA / 'jobs' / job['id'] / (job['ray_submission_id'] or 'attempt-1')
 
@@ -132,7 +139,7 @@ class Scheduler:
             self.redis_recovered_at = time.time()
         try:
             if self.client is None:
-                self.client = JobSubmissionClient(config.RAY_ADDRESS)
+                self.client = BoundedJobClient(config.RAY_ADDRESS)
             self.client.get_version()
             self.ray_ok = True
         except Exception as exc:
@@ -204,10 +211,23 @@ class Scheduler:
             job = store.get(job_id)
             if not job or job['status'] in TERMINAL:
                 return job
+            if job['reserved'] and self.client is not None:
+                try:
+                    info = self.client.get_job_info(job['ray_submission_id'])
+                    state = str(info.status.value if hasattr(info.status, 'value') else info.status)
+                    if state in RAY_TERMINAL:
+                        self.reconcile(job)
+                        job = store.get(job_id)
+                        if job['status'] in TERMINAL:
+                            return job
+                except Exception:
+                    # Persist cancellation intent even when the executor is unreachable.
+                    log.exception('Could not preflight cancel for %s', job_id)
             if not job['reserved']:
                 self.finish(job, 'cancelled', error='用户取消排队任务')
             else:
-                store.update(job_id, stop_reason=job['stop_reason'] or 'cancelled')
+                store.update(job_id, stop_reason=job['stop_reason'] or 'cancelled',
+                             stop_requested_at=job.get('stop_requested_at') or time.time())
             return store.get(job_id)
 
     def reconcile(self, job):
@@ -216,7 +236,8 @@ class Scheduler:
         except RuntimeError as exc:
             if 'does not exist' not in str(exc) and 'not found' not in str(exc).lower():
                 raise
-            if not job['submitted'] and not job['stop_reason']:
+            evidence = (job_dir(job) / 'process.json').exists() or (job_dir(job) / 'result.json').exists()
+            if not job['submitted'] and not job['stop_reason'] and not evidence and not local_alive(job):
                 self.submit(job)
             else:
                 stop_local(job)
@@ -253,11 +274,16 @@ class Scheduler:
                 elif not job['heartbeat_at'] and now - (job['running_seen_at'] or now) > config.STARTUP_GRACE:
                     reason = 'heartbeat_startup_timeout'
             if reason:
-                store.update(job['id'], stop_reason=reason)
+                store.update(job['id'], stop_reason=reason, stop_requested_at=now)
                 job['stop_reason'] = reason
+                job['stop_requested_at'] = now
         if reason and state not in RAY_TERMINAL:
             if self.redis_ok:
                 self.redis.set('cancel:' + job['ray_submission_id'], reason, ex=3600)
+                # Allow the supervisor to flush its result and clean descendants first.
+                # A dead/frozen worker is still forcibly stopped after this bounded grace.
+                if local_alive(job) and now - (job.get('stop_requested_at') or 0) < 4:
+                    return
             stop_local(job)
             self.client.stop_job(job['ray_submission_id'])
             return
