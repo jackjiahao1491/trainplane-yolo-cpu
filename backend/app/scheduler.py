@@ -43,11 +43,14 @@ def process_alive(pid, created):
 def stop_local(job):
     """Kill only the recorded process tree, checking creation time against PID reuse."""
     info = read_json(job_dir(job) / 'process.json')
-    for pid_key, time_key in [('pid', 'create_time'), ('worker_pid', 'worker_create_time')]:
-        if not process_alive(info.get(pid_key), info.get(time_key)):
+    identities = list(info.get('children', [])) + [
+        {'pid': info.get('pid'), 'create_time': info.get('create_time')},
+        {'pid': info.get('worker_pid'), 'create_time': info.get('worker_create_time')}]
+    for identity in identities:
+        if not process_alive(identity['pid'], identity['create_time']):
             continue
         try:
-            parent = psutil.Process(info[pid_key])
+            parent = psutil.Process(identity['pid'])
             children = parent.children(recursive=True)
             for p in reversed(children):
                 try:
@@ -62,8 +65,10 @@ def stop_local(job):
 
 def local_alive(job):
     info = read_json(job_dir(job) / 'process.json')
-    return any(process_alive(info.get(p), info.get(t)) for p, t in
-               [('pid', 'create_time'), ('worker_pid', 'worker_create_time')])
+    identities = list(info.get('children', [])) + [
+        {'pid': info.get('pid'), 'create_time': info.get('create_time')},
+        {'pid': info.get('worker_pid'), 'create_time': info.get('worker_create_time')}]
+    return any(process_alive(p['pid'], p['create_time']) for p in identities)
 
 
 class Scheduler:
@@ -75,6 +80,7 @@ class Scheduler:
         self.client = None
         self.ray_ok = False
         self.redis_ok = False
+        self.redis_recovered_at = None
         self.last_error = None
         self.thread = None
         self.owner_file = None
@@ -117,10 +123,13 @@ class Scheduler:
             self.halt.wait(config.INTERVAL)
 
     def tick(self):
+        was_redis_ok = self.redis_ok
         try:
             self.redis_ok = bool(self.redis.ping())
         except redis.RedisError:
             self.redis_ok = False
+        if self.redis_ok and not was_redis_ok:
+            self.redis_recovered_at = time.time()
         try:
             if self.client is None:
                 self.client = JobSubmissionClient(config.RAY_ADDRESS)
@@ -238,7 +247,7 @@ class Scheduler:
         if state not in RAY_TERMINAL and not reason:
             if job['started_at'] and now - job['started_at'] > job['timeout_seconds']:
                 reason = 'runtime_timeout'
-            elif state == 'RUNNING' and self.redis_ok:
+            elif state == 'RUNNING' and self.redis_ok and (self.redis_recovered_at is None or now-self.redis_recovered_at > 4):
                 if job['heartbeat_at'] and now - job['heartbeat_at'] > config.HEARTBEAT_TIMEOUT:
                     reason = 'heartbeat_timeout'
                 elif not job['heartbeat_at'] and now - (job['running_seen_at'] or now) > config.STARTUP_GRACE:
@@ -263,7 +272,7 @@ class Scheduler:
                 errors = {'cancelled': '用户取消', 'runtime_timeout': '超过最大运行时长',
                           'heartbeat_timeout': 'worker 心跳超时', 'heartbeat_startup_timeout': 'worker 启动后未上报心跳'}
                 self.finish(job, status, code, errors[reason])
-            elif result.get('error', '').startswith('timeout'):
+            elif (result.get('error') or '').startswith('timeout'):
                 self.finish(job, 'failed', code, '超过最大运行时长')
             elif state == 'SUCCEEDED' and code == 0:
                 self.finish(job, 'succeeded', code)
