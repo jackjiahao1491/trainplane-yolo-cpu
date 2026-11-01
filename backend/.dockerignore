@@ -1,0 +1,9 @@
+.venv
+data
+datasets
+runs
+*.pt
+*.part
+__pycache__
+.pytest_cache
+tests

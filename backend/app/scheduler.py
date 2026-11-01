@@ -142,6 +142,7 @@ class Scheduler:
                 self.client = BoundedJobClient(config.RAY_ADDRESS)
             self.client.get_version()
             self.ray_ok = True
+            self.last_error = None
         except Exception as exc:
             self.ray_ok = False
             self.last_error = f'Ray unavailable: {exc}'
@@ -155,7 +156,6 @@ class Scheduler:
                 self.reconcile(job)
             if self.redis_ok:
                 self.dispatch()
-            self.last_error = None
 
     def submit(self, job):
         folder = job_dir(job)
@@ -197,9 +197,10 @@ class Scheduler:
         for job in selected:
             try:
                 self.submit(job)
-            except Exception:
+            except Exception as exc:
                 # The server may have accepted the request before a transport error.
                 # Keep the durable reservation and query the stable submission ID next tick.
+                self.last_error = f'Submission uncertain: {exc}'
                 log.exception('Submission uncertain: %s', job['id'])
 
     def finish(self, job, status, exit_code=None, error=None):

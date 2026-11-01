@@ -30,12 +30,14 @@ def main() -> None:
     os.environ["MKL_NUM_THREADS"] = str(cpu)
 
     import torch
-    from ultralytics import YOLO
+    from ultralytics import YOLO, settings
 
     torch.set_num_threads(cpu)
     torch.set_num_interop_threads(1)
     job_dir = Path(os.environ.get("TRAIN_JOB_DIR", Path.cwd() / "training-output")).resolve()
     job_dir.mkdir(parents=True, exist_ok=True)
+    data_root = Path(os.environ.get('TRAINPLANE_DATA_DIR', Path(__file__).resolve().parents[1] / 'data'))
+    settings.update({'datasets_dir': str((data_root / 'datasets').resolve())})
     recorded_epochs: set[int] = set()
 
     def save_metrics(trainer) -> None:

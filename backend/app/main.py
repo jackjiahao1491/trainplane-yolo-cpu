@@ -53,7 +53,7 @@ class JobCreate(BaseModel):
 
 @app.get('/api/health')
 def health():
-    return {'status': 'ok' if scheduler.ray_ok and scheduler.redis_ok else 'degraded',
+    return {'status': 'ok' if scheduler.ray_ok and scheduler.redis_ok and not scheduler.last_error else 'degraded',
             'ray_ok': scheduler.ray_ok, 'redis_ok': scheduler.redis_ok, 'error': scheduler.last_error}
 
 
