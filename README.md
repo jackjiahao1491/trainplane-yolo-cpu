@@ -2,6 +2,10 @@
 
 面向单机、可信本地用户的前后端分离训练平台。使用真实 Ray Jobs 执行任务、Redis 接收 worker 心跳、SQLite 保存任务与资源预留；默认负载为 ultralytics YOLO + coco128 + CPU。平台自行实现业务页面、队列、状态机、日志和恢复逻辑，不嵌入第三方平台页面。
 
+GitHub 仓库：[jackjiahao1491/trainplane-yolo-cpu](https://github.com/jackjiahao1491/trainplane-yolo-cpu)。
+
+完整架构流程图、所有功能的实现说明、代码入口、验收证据和优化建议见 [架构与功能实现说明](docs/architecture-and-implementation.md)。需要离线展示或打印时，可下载 [HTML阅读版](docs/architecture-and-implementation.html) 后在浏览器中打开；图表不依赖网络。
+
 ## 技术栈与运行边界
 
 - 后端：Python 3.12、FastAPI、Ray、redis-py、SQLite、psutil。

@@ -56,18 +56,18 @@ flowchart LR
   WORKER --> FILES[每任务目录：日志 / 进程身份 / 结果]
   YOLO -->|指标 / 权重| FILES
   API -->|有界读取| FILES
-  FILES -->|增量日志 / 指标JSON| UI
+  API -->|增量日志 / 指标JSON| UI
 ```
 
 | 组件 | 具体职责 | 代码入口 |
 |---|---|---|
-| FastAPI | 参数校验、提交/查询/取消/资源/日志/指标接口；生命周期启动调度器 | {{src:backend/app/main.py|lifespan}}、{{src:backend/app/main.py|JobCreate}} |
-| 调度器 | 每秒检查依赖，先核对所有已有预留，再挑选待执行任务；管理业务状态和CPU账本 | {{src:backend/app/scheduler.py|Scheduler.tick}} |
-| SQLite | 持久化任务意图、状态、时间、CPU预留、固定Ray提交ID | {{src:backend/app/store.py|initialize}}、{{src:backend/app/store.py|connection}} |
-| Redis | worker短期心跳和取消信号；不作为任务历史的唯一存储 | {{src:backend/app/worker.py|main}}中的heartbeat_loop |
-| Ray Jobs | 以独立于API的执行服务运行worker，为入口声明CPU，不再嵌套申请另一份Ray训练CPU | {{src:backend/app/scheduler.py|Scheduler.submit}} |
-| worker | 启动训练子进程、合并stdout/stderr写日志、上报心跳、监督退出和后代清理 | {{src:backend/app/worker.py|main}}、{{src:backend/app/worker.py|stop_tree}} |
-| 训练入口 | 固定CPU和coco128，应用线程配额、采集每epoch指标、保存模型 | {{src:backend/app/train.py|main}} |
+| FastAPI | 参数校验、提交/查询/取消/资源/日志/指标接口；生命周期启动调度器 | [main.py · lifespan()](../backend/app/main.py#L19)、[main.py · JobCreate()](../backend/app/main.py#L46) |
+| 调度器 | 每秒检查依赖，先核对所有已有预留，再挑选待执行任务；管理业务状态和CPU账本 | [scheduler.py · Scheduler.tick()](../backend/app/scheduler.py#L132) |
+| SQLite | 持久化任务意图、状态、时间、CPU预留、固定Ray提交ID | [store.py · initialize()](../backend/app/store.py#L6)、[store.py · connection()](../backend/app/store.py#L27) |
+| Redis | worker短期心跳和取消信号；不作为任务历史的唯一存储 | [worker.py · main.heartbeat_loop()](../backend/app/worker.py#L169) |
+| Ray Jobs | 以独立于API的执行服务运行worker，为入口声明CPU，不再嵌套申请另一份Ray训练CPU | [scheduler.py · Scheduler.submit()](../backend/app/scheduler.py#L160) |
+| worker | 启动训练子进程、合并stdout/stderr写日志、上报心跳、监督退出和后代清理 | [worker.py · main()](../backend/app/worker.py#L83)、[worker.py · stop_tree()](../backend/app/worker.py#L44) |
+| 训练入口 | 固定CPU和coco128，应用线程配额、采集每epoch指标、保存模型 | [train.py · main()](../backend/app/train.py#L21) |
 | Vue页面 | 查询真实API，展示资源、任务、日志、指标，不生成假任务数据 | [路由](../frontend/src/router.ts)、[API客户端](../frontend/src/api.ts) |
 
 部署由 [compose.yaml](../compose.yaml) 描述：前端5173、API8000、Ray Jobs HTTP8265、Redis6379；Ray内部GCS使用6380，避免与Redis混淆。API容器经服务名访问 `http://ray:8265` 与 `redis://redis:6379/0`。
@@ -100,7 +100,7 @@ flowchart TD
 5. SQLite事务提交后才调用外部Ray。调用异常时保留预留并记录“提交不确定”，下一轮按同一ID核对，不能立即释放CPU再盲目提交。
 6. 调度循环始终先核对所有旧预留，再放行新任务。`finish()`统一把状态、结束时间和 `reserved=0` 一起写回数据库。
 
-代码：{{src:backend/app/main.py|create_job}}、{{src:backend/app/scheduler.py|Scheduler.dispatch}}、{{src:backend/app/scheduler.py|Scheduler.submit}}、{{src:backend/app/scheduler.py|Scheduler.finish}}。
+代码：[main.py · create_job()](../backend/app/main.py#L75)、[scheduler.py · Scheduler.dispatch()](../backend/app/scheduler.py#L181)、[scheduler.py · Scheduler.submit()](../backend/app/scheduler.py#L160)、[scheduler.py · Scheduler.finish()](../backend/app/scheduler.py#L206)。
 
 **并发边界：** 调度与取消共用一个 `threading.RLock`；数据目录还有进程级文件锁，拒绝第二个调度器。演示使用一个Uvicorn worker且不启用reload。SQLite账本事务与Ray执行并非一个分布式事务；固定ID和对账降低重复执行风险，但不宣称跨所有崩溃场景的全局“恰好一次”。重复调用创建接口也没有业务幂等键，会创建不同任务。
 
@@ -112,7 +112,9 @@ flowchart TD
 stateDiagram-v2
   [*] --> pending
   pending --> running: Ray报告RUNNING
-  pending --> cancelled: 未预留任务直接取消
+  pending --> cancelled: 未预留直接取消 / 已预留先确认停止
+  pending --> failed: 提交或启动等异常，确认停止
+  pending --> succeeded: 两轮间已完成，Ray成功且exit0
   running --> succeeded: Ray成功且训练退出码0
   running --> failed: 非0 / 超时 / 心跳超时 / 执行丢失
   running --> cancelled: 用户取消且确认执行已停止
@@ -126,11 +128,11 @@ stateDiagram-v2
 | failed | 非0退出、运行超时、心跳超时、启动后未上报心跳或执行器明确丢失等；`error`说明原因 |
 | cancelled | 用户取消；已预留任务必须等到确认停止后才释放，取消请求本身不是最终状态 |
 
-内部用 `reserved`、`submitted`、`running_seen_at`、`stop_requested_at` 辅助控制，不增加题目之外的对外状态。`stop_reason`可返回给前端，页面显示“正在停止”并禁用重复取消。尚未真正启动的已预留pending任务也走停止确认流程，所以它可以最终成为cancelled或failed。
+内部用 `reserved`、`submitted`、`running_seen_at`、`stop_requested_at` 辅助控制，不增加题目之外的对外状态。`stop_reason`可返回给前端，页面显示“正在停止”并禁用重复取消。尚未真正启动的已预留pending任务也走停止确认流程，所以它可以最终成为cancelled或failed。短任务也可能在两次对账之间直接完成，若已确认Ray成功且退出码0，可由pending直接收尾为succeeded，不强制补一个虚假的running记录。
 
 取消接口先检查Ray是否已经终态；若任务实际已经成功，会先收尾成功，避免过晚取消覆盖结果。终态任务再次取消保持不变。更细的跨请求完成竞态仍按平台已持久化的停止意图和对账结果处理，不依赖前端标签推断。
 
-代码：{{src:backend/app/scheduler.py|Scheduler.request_cancel}}、{{src:backend/app/scheduler.py|Scheduler.reconcile}}、{{src:backend/app/main.py|public}}。
+代码：[scheduler.py · Scheduler.request_cancel()](../backend/app/scheduler.py#L210)、[scheduler.py · Scheduler.reconcile()](../backend/app/scheduler.py#L234)、[main.py · public()](../backend/app/main.py#L31)。
 
 <a id="s5"></a>
 ## 5. CPU、心跳和超时控制
@@ -145,7 +147,7 @@ stateDiagram-v2
 
 默认两份1核短任务可以并发，一份2核真实训练占满配额，其余等待。训练与验证均固定 `device=cpu`，隐藏CUDA，Ray不申请GPU；没有NCCL或DDP流程。
 
-代码：[Compose资源配置](../compose.yaml)、{{src:backend/app/scheduler.py|Scheduler.submit}}、{{src:backend/app/train.py|main}}中的enforce_cpu_threads回调。
+代码：[Compose资源配置](../compose.yaml)、[scheduler.py · Scheduler.submit()](../backend/app/scheduler.py#L160)、[train.py · main.enforce_cpu_threads()](../backend/app/train.py#L82)回调。
 
 ### 心跳与依赖故障
 
@@ -165,9 +167,9 @@ stateDiagram-v2
 
 worker从子进程实际启动后使用 `time.monotonic()` 计时，每约0.2秒检查；调度器使用保存的 `started_at` 与 `time.time()` 再次检查。排队时间不计入运行超时，Ray报告RUNNING但训练尚未启动时由首次心跳宽限约束。超时最终为failed，不是succeeded或用户cancelled。
 
-worker的单调时钟避免普通系统时间校正影响进程内计时；调度器和跨进程心跳仍使用墙上时间，时钟跳变/长时间休眠是后续可靠性优化点。Ray HTTP调用由 `BoundedJobClient` 设置连接2秒、读取5秒超时，避免一次执行器请求永久卡死调度循环。
+worker的单调时钟避免普通系统时间校正影响进程内计时；调度器和跨进程心跳仍使用墙上时间，时钟跳变/长时间休眠是后续可靠性优化点。Ray HTTP调用由 `BoundedJobClient` 设置连接2秒、读取5秒超时，避免一次执行器请求永久卡死调度循环。Ray不可达时 `tick()`直接返回，协调侧这轮不会继续做心跳/运行时长对账；worker自身的运行超时仍是独立兜底，并非所有看门狗在Ray故障时都照常推进。
 
-代码：{{src:backend/app/worker.py|main}}、{{src:backend/app/scheduler.py|Scheduler.reconcile}}、{{src:backend/app/scheduler.py|BoundedJobClient._do_request}}、[默认配置](../backend/app/config.py)。
+代码：[worker.py · main()](../backend/app/worker.py#L83)、[scheduler.py · Scheduler.reconcile()](../backend/app/scheduler.py#L234)、[scheduler.py · BoundedJobClient._do_request()](../backend/app/scheduler.py#L24)、[默认配置](../backend/app/config.py)。
 
 <a id="s6"></a>
 ## 6. 取消与进程树清理
@@ -194,7 +196,7 @@ flowchart TD
 
 这解释了为什么点击“取消”后页面可能短暂仍显示running或pending：停止请求已接收，资源还在等待真实停止确认。清理覆盖已发现和已记录的进程树；瞬时逃逸进程、恶意任意命令不属于安全沙箱保证，生产建议见第14节。
 
-代码：{{src:backend/app/scheduler.py|Scheduler.request_cancel}}、{{src:backend/app/scheduler.py|stop_local}}、{{src:backend/app/scheduler.py|local_alive}}、{{src:backend/app/worker.py|matching_process}}、{{src:backend/app/worker.py|stop_tree}}。
+代码：[scheduler.py · Scheduler.request_cancel()](../backend/app/scheduler.py#L210)、[scheduler.py · stop_local()](../backend/app/scheduler.py#L50)、[scheduler.py · local_alive()](../backend/app/scheduler.py#L73)、[worker.py · matching_process()](../backend/app/worker.py#L33)、[worker.py · stop_tree()](../backend/app/worker.py#L44)。
 
 <a id="s7"></a>
 ## 7. 重启恢复与提交不确定性
@@ -221,7 +223,7 @@ API重启后调度器逐一对账，资源账本来自持久化 `reserved`，不
 
 恢复的是任务记录、资源预留和管理能力，**不承诺Ray容器/整机重启后自动断点续训**。模型权重留在磁盘，但自动resume、训练attempt重试目前未实现。某个任务对账异常可能中止这一轮后续处理；下一轮继续，此单调度器串行策略适合演示规模。
 
-代码：{{src:backend/app/scheduler.py|Scheduler.tick}}、{{src:backend/app/scheduler.py|Scheduler.reconcile}}、[恢复验收脚本](../scripts/recovery.py)。
+代码：[scheduler.py · Scheduler.tick()](../backend/app/scheduler.py#L132)、[scheduler.py · Scheduler.reconcile()](../backend/app/scheduler.py#L234)、[恢复验收脚本](../scripts/recovery.py)。
 
 <a id="s8"></a>
 ## 8. 日志和训练指标链路
@@ -257,7 +259,7 @@ UTF-8尾部若跨读取边界，或运行中暂时只写入半个字符，API暂
 
 路由切换时使用generation标识丢弃旧请求结果，避免A任务日志混到B任务；同一轮未完成时不重入；任务结束后读完尾部再停止日志获取。通用API客户端对请求设置15秒Abort超时。
 
-代码：{{src:backend/app/main.py|logs}}、[JobDetail.vue的poll/displayLogs/toggleFollow/copyLogs](../frontend/src/views/JobDetail.vue)、[api.ts](../frontend/src/api.ts)。当前没有SSE或WebSocket日志流。
+代码：[main.py · logs()](../backend/app/main.py#L119)、[JobDetail.vue的poll/displayLogs/toggleFollow/copyLogs](../frontend/src/views/JobDetail.vue)、[api.ts](../frontend/src/api.ts)。当前没有SSE或WebSocket日志流。
 
 ### 指标采集与展示
 
@@ -267,7 +269,7 @@ UTF-8尾部若跨读取边界，或运行中暂时只写入半个字符，API暂
 
 **已有指标持久化与GET读取，没有指标POST存储接口。** worker/训练入口直接写本机共享文件。这满足本项目选做的指标采集与可视化部分，不能包装成完整外部指标上报服务。
 
-代码：{{src:backend/app/train.py|main}}中的save_metrics、{{src:backend/app/main.py|metrics}}、[MetricChart.vue](../frontend/src/components/MetricChart.vue)。
+代码：[train.py · main.save_metrics()](../backend/app/train.py#L57)、[main.py · metrics()](../backend/app/main.py#L143)、[MetricChart.vue](../frontend/src/components/MetricChart.vue)。
 
 <a id="s9"></a>
 ## 9. 持久化结构与文件说明
@@ -332,14 +334,14 @@ process/result/heartbeat等JSON通过临时文件、flush、fsync、replace原�
 
 | 方法与路径 | 实现说明 | 源码 |
 |---|---|---|
-| GET /api/health | Ray、Redis及最近调度错误；依赖或调度异常时degraded | {{src:backend/app/main.py|health}} |
-| GET /api/cluster | 总/已预留/可用CPU、排队与运行数、单节点CPU/内存瞬时利用率 | {{src:backend/app/main.py|cluster}} |
-| POST /api/jobs | 校验并保存任务，返回201；资源不足不拒绝，而是排队 | {{src:backend/app/main.py|create_job}} |
-| GET /api/jobs | page默认1、page_size默认10且1～100；状态精确筛选、ID子串搜索；提交时间倒序 | {{src:backend/app/main.py|list_jobs}} |
-| GET /api/jobs/{id} | 配置、状态、时间、心跳、Ray ID、退出码与错误 | {{src:backend/app/main.py|detail}} |
-| POST /api/jobs/{id}/cancel | 接收取消意图，返回当前状态；终态幂等保持 | {{src:backend/app/main.py|cancel}} |
-| GET /api/jobs/{id}/logs | byte offset有界读取，返回下一位置、当前EOF和任务结束标志 | {{src:backend/app/main.py|logs}} |
-| GET /api/jobs/{id}/metrics | 从JSONL读取并映射每epoch指标，最多最早1000条有效记录 | {{src:backend/app/main.py|metrics}} |
+| GET /api/health | Ray、Redis及最近调度错误；依赖或调度异常时degraded | [main.py · health()](../backend/app/main.py#L55) |
+| GET /api/cluster | 总/已预留/可用CPU、排队与运行数、单节点CPU/内存瞬时利用率 | [main.py · cluster()](../backend/app/main.py#L61) |
+| POST /api/jobs | 校验并保存任务，返回201；资源不足不拒绝，而是排队 | [main.py · create_job()](../backend/app/main.py#L75) |
+| GET /api/jobs | page默认1、page_size默认10且1～100；状态精确筛选、ID子串搜索；提交时间倒序 | [main.py · list_jobs()](../backend/app/main.py#L88) |
+| GET /api/jobs/{id} | 配置、状态、时间、心跳、Ray ID、退出码与错误 | [main.py · detail()](../backend/app/main.py#L108) |
+| POST /api/jobs/{id}/cancel | 接收取消意图，返回当前状态；终态幂等保持 | [main.py · cancel()](../backend/app/main.py#L113) |
+| GET /api/jobs/{id}/logs | byte offset有界读取，返回下一位置、当前EOF和任务结束标志 | [main.py · logs()](../backend/app/main.py#L119) |
+| GET /api/jobs/{id}/metrics | 从JSONL读取并映射每epoch指标，最多最早1000条有效记录 | [main.py · metrics()](../backend/app/main.py#L143) |
 
 提交体示例：
 
@@ -423,14 +425,16 @@ setup默认仅为宿主安装requests/psutil及前端依赖；训练栈在Docker
 
 | 顺序 / 方向 | 当前边界 | 建议与触发条件 | 建议级别 |
 |---|---|---|---|
-| 1 可靠性 | 单循环串行对账，HTTP已有超时；SQLite与Ray不是同一事务；创建接口无幂等键；协调侧使用墙上时间 | 增加客户端幂等键、持久提交阶段/事件、故障分类与带抖动退避；独立健康/进度探针；测试时钟跳变与存储中断。扩大规模前再考虑更严格执行租约，不能仅给固定ID就承诺恰好一次 | A/B |
+| 1 可靠性 | 单循环串行对账，HTTP已有超时；Ray不可达时本轮直接返回；SQLite与Ray不是同一事务；创建接口无幂等键；协调侧使用墙上时间 | 增加客户端幂等键、持久提交阶段/事件、故障分类与带抖动退避；分离执行器连接检查和本地看门狗；独立健康/进度探针；测试时钟跳变与存储中断。扩大规模前再考虑更严格执行租约，不能仅给固定ID就承诺恰好一次 | A/B |
 | 2 安全 | 可信单用户可输入命令，无鉴权；API共享Ray PID且可清理进程，shell=False也不是沙箱 | 公网前加入身份/权限、命令模板白名单、最小权限worker、网络/挂载限制、审计；用受控执行代理替换跨租户共享PID，防止用户任务读取其他任务或宿主数据 | A |
 | 3 内存与任务隔离 | Docker总CPU上限与Torch线程控制；没有每任务内存/PID上限、任务级RSS曲线；已知进程树清理有发现窗口 | 多用户/大训练采用每任务容器/cgroup内存与PID限制、CPU配额、进程生命周期绑定，采集RSS/CPU；先做低成本资源预检，OOM与超时区分原因 | A/B |
 | 4 调度公平性 | 严格优先级/FIFO，无回填、aging或抢占，队首可能阻塞，低优先级可能饥饿 | 加等待时间提升优先级，或在资源预留不被侵蚀的前提下安全回填；确有业务需求再引入配额、公平队列及检查点抢占 | B |
-| 5 单调度器扩展 | RLock+文件锁+SQLite适合单机；共享PID只适合同节点 | 任务量或多API实例增长时拆独立调度器，迁移事务数据库，带fencing token的选主/租约，节点执行代理与对象存储；不可直接把Uvicorn workers调大 | B |
+| 5 单调度器扩展 | RLock内串行Ray I/O，队列fetchall；文件锁+SQLite适合单机，共享PID只适合同节点 | 分页/分批挑选队列、缩短持锁IO区；任务量或多API实例增长时先拆独立调度器，迁移事务数据库，带fencing token的选主/租约、节点执行代理与对象存储；不可直接把Uvicorn workers调大 | B |
 | 6 指标游标 | GET每次从头读最早1000条，没有POST接口；长训练后半段不可见 | 按epoch/记录游标增量读取，区分attempt与指标版本；需要远端worker时增加带认证的批量上报、幂等去重、分辨率下采样或专门存储 | B |
-| 7 日志归档 | 文件无限追加，按物理byte offset读取；前端只留500k字符，没有虚拟滚动 | 配保留策略、磁盘配额、归档压缩及授权下载；轮转时引入分片ID+逻辑游标，不能直接截断导致旧offset失效；大面板再加虚拟滚动或SSE | B/C |
-| 8 依赖与镜像锁定 | 固定核心Python版本并保存Linux依赖快照；基础镜像/Redis标签仍可变化，首次需下载 | 用完整Linux锁文件、镜像digest、受信制品缓存与校验摘要复现；构建时做兼容检查，形成固定版本升级/回滚流程 | B |
-| 9 前端首包与轮询 | 静态路由导入、Element Plus整包；固定1.5/3秒轮询，终态后详情仍轮询；错误时没有指数退避 | 路由懒加载、组件按需引入/分包；隐藏标签页降频、终态停掉不必要请求、错误指数退避和请求去重；只有需要更低延迟时才加SSE | C |
+| 7 日志归档 | 日志和模型权重没有保留策略，日志无限追加，按物理byte offset读取；前端只留500k字符，没有虚拟滚动 | 配保留策略、磁盘配额、归档压缩及授权下载；轮转时引入分片ID+逻辑游标，不能直接截断导致旧offset失效；大面板再加虚拟滚动或SSE | B/C |
+| 8 依赖与镜像锁定 | 固定核心Python版本，保存Linux完整快照但构建尚未使用完整快照；基础镜像/Redis标签仍浮动 | 构建使用完整Linux锁文件、镜像digest、受信制品缓存与校验摘要；构建时做兼容检查，形成固定版本升级/回滚流程 | B |
+| 9 前端首包与轮询 | 静态路由导入、Element Plus整包；固定1.5/3秒轮询，终态后详情仍轮询；错误无指数退避；每次追加对整个500k窗口重算ANSI清理 | 路由懒加载、组件按需引入/分包；隐藏标签页降频、终态停掉不必要请求、错误退避和去重；分块增量清理并正确处理跨块ANSI序列，必要时虚拟滚动/SSE | C |
+
+优化依据的官方资料：[Ray逻辑资源](https://docs.ray.io/en/latest/ray-core/scheduling/resources.html)说明调度资源不等于真实CPU用量隔离；[SQLite WAL](https://sqlite.org/wal.html)说明WAL仍只有一个写者；[FastAPI workers](https://fastapi.tiangolo.com/deployment/server-workers/)说明多个worker是多个进程。**“本项目不能直接启用多个API worker”是代码推论**：lifespan会为每个进程启动内置调度器，且同数据目录的进程锁会拒绝第二个调度器。因此应先拆独立调度进程，再扩API，不能把框架支持多进程等同于当前应用可直接水平扩展。
 
 答辩可这样解释取舍：先用单机、单调度器和真实训练完成全部P0；可靠停止和可恢复账本优先于增加复杂功能。后续改进由用户数量、任务规模、数据量与安全边界驱动，不为演示预先堆叠完整生产平台。
