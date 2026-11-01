@@ -1,0 +1,79 @@
+{
+  "timestamp_utc": "2026-11-01T10:21:16.599906+00:00",
+  "passed": true,
+  "runtime": "docker-linux",
+  "jobs": [
+    "8dabfbb5b70b4314",
+    "35541d0c05814102"
+  ],
+  "ray_submission_id": "8dabfbb5b70b4314-1",
+  "identity_before": {
+    "worker_pid": 2668,
+    "worker_create_time": 1793528479.16,
+    "pid": null,
+    "create_time": null,
+    "children": [],
+    "started_at": 1793528480.421814,
+    "execution_mode": "docker",
+    "container_id": "20549d9217a774a8a08aedd74edf5b332e8a6ecc69913990b53ea6d053f72ce7",
+    "container_name": "trainplane-task-8dabfbb5b70b4314-1"
+  },
+  "identity_after": {
+    "worker_pid": 2668,
+    "worker_create_time": 1793528479.16,
+    "pid": null,
+    "create_time": null,
+    "children": [],
+    "started_at": 1793528480.421814,
+    "execution_mode": "docker",
+    "container_id": "20549d9217a774a8a08aedd74edf5b332e8a6ecc69913990b53ea6d053f72ce7",
+    "container_name": "trainplane-task-8dabfbb5b70b4314-1"
+  },
+  "execution_before": {
+    "api": {
+      "id": "049d9786e6cb40f6048f44b1e2344b60d62e85ccbb5993c7570ed31f26d4e9a3",
+      "started_at": "2026-11-01T10:05:51.314329696Z"
+    },
+    "ray": {
+      "id": "a0619305ccac9a372b93c35c9739fa5a1644799df268e0f72f21e02b45e12059",
+      "started_at": "2026-11-01T10:05:36.201593333Z"
+    }
+  },
+  "execution_after": {
+    "api": {
+      "id": "049d9786e6cb40f6048f44b1e2344b60d62e85ccbb5993c7570ed31f26d4e9a3",
+      "started_at": "2026-11-01T10:21:23.871636352Z"
+    },
+    "ray": {
+      "id": "a0619305ccac9a372b93c35c9739fa5a1644799df268e0f72f21e02b45e12059",
+      "started_at": "2026-11-01T10:05:36.201593333Z"
+    }
+  },
+  "workload_start_count": 1,
+  "final_cluster": {
+    "total_cpus": 2,
+    "allocated_cpus": 0,
+    "available_cpus": 2,
+    "total_memory_mb": 2048,
+    "allocated_memory_mb": 0,
+    "available_memory_mb": 2048,
+    "aging_interval_seconds": 60.0,
+    "backfill_max_bypass": 3,
+    "execution_mode": "docker",
+    "pending_jobs": 0,
+    "running_jobs": 0,
+    "redis_ok": true,
+    "ray_ok": true,
+    "nodes": [
+      {
+        "id": "local",
+        "name": "本机 CPU 节点",
+        "total_cpus": 2,
+        "allocated_cpus": 0,
+        "cpu_percent": 20.2,
+        "memory_percent": 78.4
+      }
+    ]
+  },
+  "elapsed_seconds": 55.282
+}

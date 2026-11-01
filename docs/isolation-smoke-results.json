@@ -1,0 +1,89 @@
+{
+  "timestamp_utc": "2026-11-01T10:20:25.933672+00:00",
+  "base_url": "http://127.0.0.1:8000/api",
+  "jobs": [
+    "4546a3124f224c81",
+    "60365b528b184711",
+    "289339db5c404bf0",
+    "0b31d2ece9c242ee",
+    "c8199bbe7d784db4",
+    "f0c9f1b85edc437e"
+  ],
+  "results": [
+    {
+      "check": "health_and_resources",
+      "passed": true,
+      "detail": {
+        "health": {
+          "status": "ok",
+          "ray_ok": true,
+          "redis_ok": true,
+          "error": null
+        },
+        "total_cpus": 2
+      }
+    },
+    {
+      "check": "queue_and_pending_cancel",
+      "passed": true,
+      "detail": {
+        "running": "4546a3124f224c81",
+        "queued": "60365b528b184711"
+      }
+    },
+    {
+      "check": "running_cancel_and_auto_dispatch",
+      "passed": true,
+      "detail": {
+        "cancelled": "4546a3124f224c81",
+        "succeeded": "289339db5c404bf0"
+      }
+    },
+    {
+      "check": "incremental_logs",
+      "passed": true,
+      "detail": {
+        "job": "289339db5c404bf0",
+        "characters": 407
+      }
+    },
+    {
+      "check": "nonzero_exit",
+      "passed": true,
+      "detail": {
+        "job": "0b31d2ece9c242ee",
+        "exit_code": 7
+      }
+    },
+    {
+      "check": "runtime_timeout",
+      "passed": true,
+      "detail": {
+        "job": "c8199bbe7d784db4",
+        "error": "超过最大运行时长"
+      }
+    },
+    {
+      "check": "heartbeat_timeout",
+      "passed": true,
+      "detail": {
+        "job": "f0c9f1b85edc437e",
+        "error": "worker 心跳超时"
+      }
+    },
+    {
+      "check": "filter_search_pagination",
+      "passed": true,
+      "detail": {
+        "job": "4546a3124f224c81"
+      }
+    },
+    {
+      "check": "resource_reclamation",
+      "passed": true,
+      "detail": {
+        "available_cpus": 2
+      }
+    }
+  ]
+}

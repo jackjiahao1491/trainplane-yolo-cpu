@@ -1,0 +1,121 @@
+{
+  "timestamp_utc": "2026-11-01T10:23:29.754171+00:00",
+  "passed": true,
+  "job_id": "5c168822dd054af1",
+  "submitted_via_browser": true,
+  "job": {
+    "id": "5c168822dd054af1",
+    "name": "验收-隔离YOLO-1epoch",
+    "command": "python -m app.train --epochs 1 --imgsz 320 --batch 1",
+    "cpu": 2,
+    "timeout_seconds": 1800,
+    "priority": 0,
+    "status": "succeeded",
+    "created_at": "2026-11-01T10:22:54.563069+00:00",
+    "started_at": "2026-11-01T10:23:02.046897+00:00",
+    "finished_at": "2026-11-01T10:25:29.226285+00:00",
+    "heartbeat_at": "2026-11-01T10:25:27.730504+00:00",
+    "exit_code": 0,
+    "error": null,
+    "ray_submission_id": "5c168822dd054af1-1",
+    "stop_reason": null,
+    "memory_mb": 1024,
+    "bypass_count": 0,
+    "backfilled": false,
+    "queue_wait_seconds": 7.483828067779541,
+    "effective_priority": 0,
+    "resource_usage": {
+      "timestamp": 1793528725.8586993,
+      "container_id": "93342e57ff1a88c18e71a6acd924e53fb4c1777460832dd49047089828b3968f",
+      "execution_mode": "docker",
+      "cpu_percent": 103.332,
+      "memory_mb": 473.754,
+      "memory_usage_mb": 706.781,
+      "pids": 9,
+      "memory_limit_mb": 1024.0,
+      "status": "running"
+    }
+  },
+  "final_cluster": {
+    "total_cpus": 2,
+    "allocated_cpus": 0,
+    "available_cpus": 2,
+    "total_memory_mb": 2048,
+    "allocated_memory_mb": 0,
+    "available_memory_mb": 2048,
+    "aging_interval_seconds": 60.0,
+    "backfill_max_bypass": 3,
+    "execution_mode": "docker",
+    "pending_jobs": 0,
+    "running_jobs": 0,
+    "redis_ok": true,
+    "ray_ok": true,
+    "nodes": [
+      {
+        "id": "local",
+        "name": "本机 CPU 节点",
+        "total_cpus": 2,
+        "allocated_cpus": 0,
+        "cpu_percent": 0.0,
+        "memory_percent": 36.0
+      }
+    ]
+  },
+  "metrics": {
+    "items": [
+      {
+        "epoch": 1,
+        "box_loss": 1.69865,
+        "cls_loss": 3.8395,
+        "dfl_loss": 1.49486,
+        "map50": 0.38557,
+        "map50_95": 0.26747
+      }
+    ]
+  },
+  "sample_count": 66,
+  "maximum_memory_working_set_mb": 487.543,
+  "maximum_memory_usage_mb": 718.551,
+  "thread_quota_checks": [
+    "[resources] device=cpu torch_threads=2 quota=2",
+    "[resources] device=cpu torch_threads=2 quota=2",
+    "[resources] device=cpu torch_threads=2 quota=2",
+    "[resources] device=cpu torch_threads=2 quota=2"
+  ],
+  "weights": {
+    "best.pt": 6491626,
+    "last.pt": 6491626
+  },
+  "result": {
+    "exit_code": 0,
+    "finished_at": 1793528728.0303683,
+    "error": null,
+    "pid": null,
+    "create_time": null,
+    "children": [],
+    "execution_mode": "docker",
+    "container_id": "93342e57ff1a88c18e71a6acd924e53fb4c1777460832dd49047089828b3968f",
+    "container_name": "trainplane-task-5c168822dd054af1-1",
+    "oom_killed": false,
+    "memory_limit_mb": 1024
+  },
+  "elapsed_seconds": 147.17938804626465,
+  "restored_application_containers": [
+    "docker-nginx-1",
+    "docker-api_websocket-1",
+    "docker-worker-1",
+    "docker-api-1",
+    "docker-agent_backend-1",
+    "docker-plugin_daemon-1",
+    "docker-worker_beat-1",
+    "docker-ssrf_proxy-1",
+    "docker-sandbox-1",
+    "docker-local_sandbox-1",
+    "docker-web-1",
+    "docker-agent_ssrf_proxy-1",
+    "docker-db_postgres-1",
+    "docker-redis-1",
+    "docker-weaviate-1"
+  ],
+  "restore_command_succeeded": true
+}

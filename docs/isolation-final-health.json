@@ -1,0 +1,112 @@
+{
+  "timestamp_utc": "2026-11-01T10:30:49.822520+00:00",
+  "passed": true,
+  "health": {
+    "status": "ok",
+    "ray_ok": true,
+    "redis_ok": true,
+    "error": null
+  },
+  "cluster": {
+    "total_cpus": 2,
+    "allocated_cpus": 0,
+    "available_cpus": 2,
+    "total_memory_mb": 2048,
+    "allocated_memory_mb": 0,
+    "available_memory_mb": 2048,
+    "aging_interval_seconds": 60.0,
+    "backfill_max_bypass": 3,
+    "execution_mode": "docker",
+    "pending_jobs": 0,
+    "running_jobs": 0,
+    "redis_ok": true,
+    "ray_ok": true,
+    "nodes": [
+      {
+        "id": "local",
+        "name": "本机 CPU 节点",
+        "total_cpus": 2,
+        "allocated_cpus": 0,
+        "cpu_percent": 73.1,
+        "memory_percent": 84.0
+      }
+    ]
+  },
+  "restored_containers": [
+    {
+      "name": "docker-nginx-1",
+      "running": true,
+      "health": null
+    },
+    {
+      "name": "docker-api_websocket-1",
+      "running": true,
+      "health": null
+    },
+    {
+      "name": "docker-worker-1",
+      "running": true,
+      "health": null
+    },
+    {
+      "name": "docker-api-1",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "docker-agent_backend-1",
+      "running": true,
+      "health": null
+    },
+    {
+      "name": "docker-plugin_daemon-1",
+      "running": true,
+      "health": null
+    },
+    {
+      "name": "docker-worker_beat-1",
+      "running": true,
+      "health": null
+    },
+    {
+      "name": "docker-ssrf_proxy-1",
+      "running": true,
+      "health": null
+    },
+    {
+      "name": "docker-sandbox-1",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "docker-local_sandbox-1",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "docker-web-1",
+      "running": true,
+      "health": null
+    },
+    {
+      "name": "docker-agent_ssrf_proxy-1",
+      "running": true,
+      "health": null
+    },
+    {
+      "name": "docker-db_postgres-1",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "docker-redis-1",
+      "running": true,
+      "health": "healthy"
+    },
+    {
+      "name": "docker-weaviate-1",
+      "running": true,
+      "health": null
+    }
+  ]
+}

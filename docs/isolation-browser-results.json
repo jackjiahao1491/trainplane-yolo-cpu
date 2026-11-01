@@ -1,0 +1,21 @@
+{
+  "timestamp_utc": "2026-11-01T10:30:49.822520+00:00",
+  "passed": true,
+  "frontend": "http://127.0.0.1:5173",
+  "checks": {
+    "operator_token_login": true,
+    "memory_limit_field_default_1024_mib": true,
+    "submit_default_yolo_and_redirect_to_jobs": true,
+    "submitted_job_id": "5c168822dd054af1",
+    "cpu_memory_pids_resource_panel_and_svg_charts": true,
+    "completed_yolo_metrics_and_log_panel": true,
+    "logout_returns_to_token_gate": true
+  },
+  "screenshots": [
+    "screenshots/isolation-login.png",
+    "screenshots/isolation-submit.png",
+    "screenshots/isolation-resources.png",
+    "screenshots/isolation-yolo.png"
+  ],
+  "scope": "Live login, real default YOLO form submission, resource chart rendering and logout; detailed stale-401 behavior is covered by frontend npm test."
+}

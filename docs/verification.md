@@ -2,6 +2,26 @@
 
 日期：2026-10-31～2026-11-01（Asia/Shanghai）。本文将设计、自动化检查和实测结果分开记录；未运行的项目不记为通过。
 
+## 2026-11-01 资源隔离与公平调度升级
+
+本节为新增版本的独立实测，后文保留首次P0交付历史。默认执行链路现在为API→Ray可信worker→独立Docker训练容器，使用CPU与内存联合预留、Bearer门禁、容器硬限制、聚合采样、优先级老化与受限回填。
+
+| 检查 | 实际结果与证据 |
+|---|---|
+| Linux完整测试 | 40 passed、0 skipped、59.80秒，开启RUN_DOCKER_TESTS=1；含原process兼容与真实隔离/OOM/worker采样。见 [isolation-unit-results.json](isolation-unit-results.json) |
+| 新增HTTP场景 | 五组通过：鉴权、隔离+采样游标、64 MiB真OOM137、CPU回填+取消回收、真实默认60秒老化。见 [isolation-fairness-results.json](isolation-fairness-results.json) |
+| P0接口回归 | 新容器执行路径九项全部通过，见 [isolation-smoke-results.json](isolation-smoke-results.json) |
+| API重启恢复 | 55.282秒；API重启、Ray不变、worker与训练容器身份不变、日志启动一次、队列接续，双配额释放。见 [isolation-recovery-results.json](isolation-recovery-results.json) |
+| 真实YOLO | 网页提交5c168822dd054af1，CPU2、1024 MiB硬限、1 epoch/320/batch1，147.179秒成功退出0；66条采样，原始内存峰值718.551 MiB；best/last各6491626字节。见 [isolation-yolo-results.json](isolation-yolo-results.json) |
+| 前端 | npm test及生产构建通过；网页登录、默认训练表单/跳转、真实资源曲线、指标/日志及退出门禁通过。见 [isolation-browser-results.json](isolation-browser-results.json) |
+| 最终恢复 | health=ok，CPU和内存预留均0；临停的其他15个应用容器全部恢复运行，原有5项健康检查全部healthy。见 [isolation-final-health.json](isolation-final-health.json) |
+
+Docker测试容器需要 `--init` 回收孤儿进程；首次临时测试命令遗漏该参数，使两个原process进程树用例因僵尸进程失败。生产Compose与训练容器本已启用init，补齐测试命令后40项完整通过。原有Starlette/httpx弃用提示和前端大包警告仍在，不影响本轮功能验收。
+
+独立容器不是虚拟机。API/Ray持Docker管理能力，默认不发布Ray/Redis宿主端口；任务没有socket、令牌或其他任务挂载。当前只有单operator令牌，没有多账号RBAC。退出的任务容器保留用于OOM/退出检查，磁盘与保留期治理属于后续优化。
+
+本次训练也经用户授权临停15个无关应用释放8GB机器内存，完成后恢复；147秒与历史107秒不是受控性能对照。coco128的一轮loss/mAP用于证明功能链路，不作为泛化精度基准。
+
 ## 检测到的环境
 
 | 项目 | 检测结果 |

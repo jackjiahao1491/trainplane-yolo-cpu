@@ -2,12 +2,14 @@
 
 建议先关闭其他占内存的软件，启动平台，确认 `/api/health` 的 Ray、Redis 均正常。真实训练与短测试任务分开记录；每个场景结束后检查 `/api/cluster` 的资源账本。
 
+新版先用 `backend/.auth/api-token` 登录网页；除health外所有API需Bearer令牌，脚本自动读取本机令牌。Ray/Redis不直接发布宿主端口。默认CPU预算2核、任务内存预算2048 MiB；检查回收时两者都应归零。
+
 ## 需求与实现映射
 
 | 笔试要求 | 实现位置 | 验收方式 |
 |---|---|---|
 | 提交、分页、详情、取消、资源、增量日志 | `backend/app/main.py` | Swagger、前端、`scripts/smoke.py` |
-| CPU 资源足够执行，不足排队 | `scheduler.py` 的事务预留和调度 | 总配额2，提交两个各申请2核任务，第二个等待 |
+| CPU/内存资源足够执行，不足排队 | `scheduler.py` 的联合事务预留和调度 | 总配额2核/2048 MiB，任一维度不足都排队 |
 | 五种状态、真实退出码 | scheduler + worker 的 `result.json` | 成功任务0退出；测试任务7退出判失败 |
 | worker 心跳与僵死检测 | worker写Redis、scheduler核对 | `app.demo --sleep 120 --freeze-heartbeat 3` |
 | 最大运行时间 | scheduler + worker双侧检查 | 运行40秒任务，timeout设3秒 |
@@ -34,7 +36,7 @@ backend\.venv\Scripts\python.exe scripts\concurrency.py
 3. 再提交同样申请2核的任务，观察 pending，CPU可用量为0。
 4. 第一个训练完成，应显示 succeeded、退出码0；第二个自动启动。
 5. 取消第二个任务并等到 cancelled，CPU可用量恢复2。
-6. 检查训练任务的 `metrics.jsonl` 和 `artifacts/train/weights/`；如果只有1 epoch，图表只有一个数据点是正常情况。希望展示趋势可在资源允许时训练3 epoch。
+6. 检查Docker任务 `workspace/metrics.jsonl` 和 `workspace/artifacts/train/weights/`；1 epoch只有一个指标点正常。资源曲线来自每2秒采样，与epoch指标分别展示。
 
 首次模型/数据集下载时间属于首次运行开销，应提前准备并明确记录，不承诺固定训练分钟数。
 
@@ -62,7 +64,7 @@ python -m app.demo --sleep 15 --exit-code 0
 
 此项只重启API，不停止Ray或删除Redis/SQLite数据。完整机器断电后的训练续训不在本题P0范围。
 
-Docker方案需确认API容器的StartedAt变化、Ray容器ID与StartedAt不变，训练进程身份在共享PID命名空间内保持。原生Windows脚本只作兼容性排查，其历史短测通过不能替代Docker最终验收。
+Docker方案需确认API容器StartedAt变化、Ray容器ID与StartedAt不变、可信worker的PID/创建时间及独立训练容器ID保持。训练PID不属于API/Ray共享命名空间，不能用数字PID跨容器核对或终止。原生Windows脚本只作排查。
 
 ## 前端手动检查
 
@@ -76,7 +78,22 @@ Docker方案需确认API容器的StartedAt变化、Ray容器ID与StartedAt不变
 
 ## 优先级加分项
 
-先启动一个占满配额的阻塞任务，然后依次提交低优先级任务和高优先级任务。取消阻塞任务后，高优先级任务应先开始；同优先级按提交时间FIFO执行。本实现不抢占已经运行的任务。
+按 `priority+floor(等待秒数/60)` 的有效优先级排序，同分FIFO，不封顶、不抢占。启动2核阻塞任务，提交P0旧任务，等待61秒后提交P1新任务；资源释放后旧任务有效优先级至少P1，并按FIFO先执行。
+
+回填：先运行1核任务，再排2核高优先级任务，随后提交1核小任务；小任务可利用空闲1核运行并显示“回填”。所有被绕过任务的bypass_count随实际回填预留累加，默认达3次后停止继续绕过。轮询或重启本身不增加次数；边界由test_scheduling覆盖。
+
+## 资源隔离与鉴权新增验收
+
+```powershell
+backend\.venv\Scripts\python.exe scripts\isolation_fairness.py --aging
+# 保留历史P0证据，输出本轮独立记录：
+backend\.venv\Scripts\python.exe scripts\smoke.py --output docs/isolation-smoke-results.json
+backend\.venv\Scripts\python.exe scripts\recovery.py --docker --output docs/isolation-recovery-results.json
+```
+
+新增脚本验证匿名401、operator会话、非root UID1000、无Docker socket/平台数据库/令牌环境、仅loopback网络、实际CPU/内存/PID限制、资源字节游标、64 MiB真实OOM失败137及回收、回填和真实老化。脚本保留退出容器证据；检查Engine的OOMKilled，不能仅用手动exit137冒充内存超限。
+
+手动查看资源详情的CPU/内存工作集曲线；新任务内存限制默认1024 MiB，可调整至平台总量以内。取消、心跳超时、运行超时、OOM、正常退出后均需确认训练容器停止并释放双配额。Docker检查失败必须保留预留，不能当作空闲。
 
 ## 记录规则
 

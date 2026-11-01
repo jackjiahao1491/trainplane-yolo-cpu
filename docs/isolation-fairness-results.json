@@ -1,0 +1,127 @@
+{
+  "timestamp_utc": "2026-11-01T10:14:17.394704+00:00",
+  "passed": true,
+  "checks": [
+    {
+      "check": "bearer_authentication",
+      "passed": true
+    },
+    {
+      "check": "isolated_execution_and_resource_cursor",
+      "passed": true,
+      "job_id": "4349e4ef5d7544a2",
+      "samples": [
+        {
+          "timestamp": 1793528084.7741158,
+          "container_id": "4471732a93c84b589cd6956d17e246a0dd8279bc34d5345962504941fbbad427",
+          "execution_mode": "docker",
+          "cpu_percent": 0.007,
+          "memory_mb": 6.594,
+          "memory_usage_mb": 6.621,
+          "pids": 2,
+          "memory_limit_mb": 128.0,
+          "status": "running"
+        },
+        {
+          "timestamp": 1793528086.9707973,
+          "container_id": "4471732a93c84b589cd6956d17e246a0dd8279bc34d5345962504941fbbad427",
+          "execution_mode": "docker",
+          "cpu_percent": 109.899,
+          "memory_mb": 21.805,
+          "memory_usage_mb": 21.832,
+          "pids": 2,
+          "memory_limit_mb": 128.0,
+          "status": "running"
+        },
+        {
+          "timestamp": 1793528089.3068323,
+          "container_id": "4471732a93c84b589cd6956d17e246a0dd8279bc34d5345962504941fbbad427",
+          "execution_mode": "docker",
+          "cpu_percent": 143.879,
+          "memory_mb": 21.805,
+          "memory_usage_mb": 21.832,
+          "pids": 2,
+          "memory_limit_mb": 128.0,
+          "status": "running"
+        },
+        {
+          "timestamp": 1793528091.6378872,
+          "container_id": "4471732a93c84b589cd6956d17e246a0dd8279bc34d5345962504941fbbad427",
+          "execution_mode": "docker",
+          "cpu_percent": 104.879,
+          "memory_mb": 21.793,
+          "memory_usage_mb": 21.832,
+          "pids": 2,
+          "memory_limit_mb": 128.0,
+          "status": "running"
+        }
+      ],
+      "limits": {
+        "NanoCpus": 1000000000,
+        "Memory": 134217728,
+        "MemorySwap": 134217728,
+        "PidsLimit": 128,
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true
+      }
+    },
+    {
+      "check": "kernel_memory_limit_and_reclamation",
+      "passed": true,
+      "job_id": "d3e9ded697b34e66",
+      "exit_code": 137,
+      "error": "memory_limit: exceeded 64 MiB"
+    },
+    {
+      "check": "live_backfill_and_cancel_reclamation",
+      "passed": true,
+      "blocker": "64615092b06b4f7a",
+      "head": "fbc13616833a4bda",
+      "small": "c659f688fd1f44f9",
+      "bypass_count": 1
+    },
+    {
+      "check": "live_priority_aging",
+      "passed": true,
+      "older": "457823211c544b1d",
+      "newer": "57a4939d43694109",
+      "observed_effective_priority": 1,
+      "interval_seconds": 60.0
+    }
+  ],
+  "final_cluster": {
+    "total_cpus": 2,
+    "allocated_cpus": 0,
+    "available_cpus": 2,
+    "total_memory_mb": 2048,
+    "allocated_memory_mb": 0,
+    "available_memory_mb": 2048,
+    "aging_interval_seconds": 60.0,
+    "backfill_max_bypass": 3,
+    "execution_mode": "docker",
+    "pending_jobs": 0,
+    "running_jobs": 0,
+    "redis_ok": true,
+    "ray_ok": true,
+    "nodes": [
+      {
+        "id": "local",
+        "name": "本机 CPU 节点",
+        "total_cpus": 2,
+        "allocated_cpus": 0,
+        "cpu_percent": 29.0,
+        "memory_percent": 78.6
+      }
+    ]
+  },
+  "jobs": [
+    "4349e4ef5d7544a2",
+    "d3e9ded697b34e66",
+    "64615092b06b4f7a",
+    "fbc13616833a4bda",
+    "c659f688fd1f44f9",
+    "5fa7d46ce54a4cd3",
+    "457823211c544b1d",
+    "57a4939d43694109"
+  ]
+}

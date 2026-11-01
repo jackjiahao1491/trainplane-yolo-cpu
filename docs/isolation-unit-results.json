@@ -1,0 +1,29 @@
+{
+  "timestamp_utc": "2026-11-01T10:19:30.474418+00:00",
+  "passed": true,
+  "runtime": "Docker Linux, init enabled, Redis connected, RUN_DOCKER_TESTS=1",
+  "backend_pytest": {
+    "passed": 40,
+    "skipped": 0,
+    "elapsed_seconds": 59.8,
+    "warning": "Existing Starlette/httpx deprecation warning"
+  },
+  "frontend": {
+    "npm_test_passed": true,
+    "npm_build_passed": true,
+    "build_seconds": 22.46,
+    "warning": "Existing >500KB bundle warning"
+  },
+  "scope": [
+    "token authentication",
+    "legacy SQLite migration",
+    "resource cursor and partial tail",
+    "untrusted metric symlink/FIFO",
+    "priority aging, FIFO and bounded backfill",
+    "CPU and memory reservations",
+    "container ownership and fail-closed cleanup",
+    "real non-root container and kernel OOM",
+    "real container worker logs and sampling",
+    "original process worker lifecycle"
+  ]
+}

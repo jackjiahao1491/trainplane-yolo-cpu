@@ -13,9 +13,10 @@ GitHub 仓库：[jackjiahao1491/trainplane-yolo-cpu](https://github.com/jackjiah
 - 训练：ultralytics、CPU 版 PyTorch、`yolov8n.pt`、`coco128.yaml`。
 - 默认运行方案：Windows运行前端与Docker Desktop，Linux容器运行FastAPI、Ray、YOLO和真正的Redis 7.4。仍是在本机CPU执行，不需要Linux双系统或GPU。
 - 单节点、单个 API 调度进程。使用文件锁拒绝多个调度器管理同一数据目录；运行 API 时不要加 `--reload` 或多个 worker。
-- 默认开放 2 个 CPU 调度配额，每个真实训练申请 2 个，避免 8GB 内存机器同时启动多个训练。申请 1 核的小测试任务可并发执行。
+- 默认开放 2 个 CPU、2048 MiB 任务内存配额；每个真实训练默认申请 2 核、1024 MiB。CPU与内存同时满足才启动，配额不足自动排队。控制服务内存不计入任务预算，8GB机器演示时仍须留足系统余量。
 - 平台CPU配额用于调度预留，训练入口同步限制PyTorch、OMP、MKL线程数，并在Ultralytics训练/验证回调中恢复配额。Docker还为Ray容器设置与总配额一致的CPU时间上限；它不等于将任务绑定到指定物理核。
-- API、前端、Redis、Ray Dashboard的宿主端口只暴露给本机。命令输入会执行训练环境中的进程，供面试演示的可信用户使用；不是面向公网的多租户沙箱。
+- 前端、API仅暴露给本机；Ray与Redis默认仅在Docker内部可达，避免绕过平台鉴权。API使用Bearer访问令牌，当前是单operator管理权限，没有多用户账号/RBAC。
+- 默认Docker模式每任务一个独立容器：硬CPU/内存限制、禁用额外swap、128进程上限、非root、只读根文件系统、禁用网络、移除capabilities。仅自己的workspace可写，数据集/模型只读，不挂Docker socket、平台数据库或其他任务目录。API/Ray是持有Docker管理能力的可信控制面，此实现不替代虚拟机级安全隔离。
 
 原生Windows上的Ray虽然曾通过短任务、并发和API重启检查，但多轮执行后仍出现GCS键值写入请求挂起，不能据此声称原生方案稳定通过。默认交付改为Docker Linux后端；Docker的最终实测与尚未验证项分别记录在 [验收记录](docs/verification.md)。
 
@@ -27,7 +28,7 @@ flowchart LR
     API <-->|业务状态 / CPU预留 / 提交ID| DB[(SQLite WAL)]
     API -->|submit / status / stop| RAY[独立 Ray Jobs 服务]
     RAY -->|CPU入口资源预留| WORKER[任务 Worker]
-    WORKER --> TRAIN[YOLO CPU 子进程<br/>coco128]
+    WORKER -->|Docker Engine / 独立PID和挂载| TRAIN[独立训练容器<br/>CPU + 内存硬限制 / coco128]
     WORKER -->|定期上报| REDIS[(Redis 心跳)]
     API -->|检测超时 / 取消信号| REDIS
     TRAIN --> FILES[每次执行独立目录<br/>日志 / 指标 / 结果 / 权重]
@@ -37,7 +38,7 @@ flowchart LR
 
 SQLite 是业务元数据的持久化事实来源，Ray 表示执行器真实状态，Redis 是短期心跳与取消信号。CPU 占用来自未释放的 SQLite 预留，不能用机器瞬时 CPU 使用率代替。
 
-默认Compose中，API与Ray使用同一镜像和相同 `/app` 路径，挂载同一份 `backend/data`。API通过 `pid: service:ray` 共享Ray的PID命名空间，因此能核对并终止训练进程树；只重启API不会停止Ray中的训练。容器里的节点CPU/内存统计反映Docker Linux环境，资源配额卡片仍以平台配置为准。
+默认Compose中，API与Ray使用同一镜像和相同 `/app` 路径，挂载同一份 `backend/data`。API通过 `pid: service:ray` 核对可信worker身份，训练容器具有独立PID命名空间，停止与恢复通过Docker容器ID、归属标签和真实状态确认。只重启API不会停止Ray或训练容器。节点CPU/内存统计反映Docker Linux环境，任务采样来自各容器cgroup；资源配额卡片以持久化预留账本为准。
 
 ## 安装依赖
 
@@ -52,7 +53,7 @@ Copy-Item .env.example .env
 backend\.venv\Scripts\python.exe scripts\prepare_training.py --mirror
 ```
 
-默认安装脚本只在宿主Python虚拟环境安装预缓存与验收所需的requests、psutil，并运行前端 `npm ci`；训练依赖由Docker镜像安装，避免新机器在Windows和Linux重复安装两套PyTorch。pip显式使用项目 `.cache/pip` 缓存。只有 `setup.ps1 -Native` 才读取 `backend/requirements.lock.txt` 安装全量Windows依赖。Linux完整依赖快照另存于 `backend/requirements-linux.lock.txt`，Dockerfile从固定核心版本的 `backend/requirements.txt` 构建。
+默认安装脚本只在宿主Python虚拟环境安装预缓存与验收所需的requests、psutil，并运行前端 `npm ci`；训练依赖由Docker镜像安装，避免重复安装PyTorch。只有 `setup.ps1 -Native` 安装全量Windows依赖。Dockerfile先安装固定核心版本 `backend/requirements.txt`，再安装 `requirements-control.txt` 的Docker SDK，复用较大的Torch缓存层；Linux完整快照为 `backend/requirements-linux.lock.txt`。
 
 如本机脚本执行策略禁止 `.ps1`，可仅对当前 PowerShell 窗口执行 `Set-ExecutionPolicy -Scope Process Bypass`，然后继续。无需更改机器全局策略。
 
@@ -69,9 +70,11 @@ backend\.venv\Scripts\python.exe scripts\prepare_training.py --mirror
 - 页面：<http://127.0.0.1:5173>
 - Swagger：<http://127.0.0.1:8000/docs>
 - 健康检查：<http://127.0.0.1:8000/api/health>
-- Ray Dashboard：<http://127.0.0.1:8265>（诊断入口，业务界面自行实现）
+- Ray Dashboard：默认不对宿主开放；API通过Docker内部服务地址访问。
 
 健康检查 `status=ok` 且 `ray_ok`、`redis_ok` 为 true 后再提交任务。`degraded` 表示API已启动，但依赖连接或调度操作仍有异常；前端仍可查看历史任务。
+
+首次启动会在 `backend/.auth/api-token` 生成随机访问令牌，该目录不进入Git且仅API容器挂载。在本机查看此文件，将令牌粘贴到网页登录框；浏览器只在当前标签页sessionStorage保存，退出登录清除。也可通过未提交的 `.env` 中 `TRAINPLANE_API_TOKEN` 自定义令牌，配置后重建API容器；Swagger右上角Authorize同样输入令牌。健康检查匿名可读，其他API必须发送 `Authorization: Bearer <token>`。
 
 ```powershell
 # 只重启 API 容器：保留 Ray、Redis和训练进程。
@@ -124,6 +127,11 @@ Windows下Ray使用ASCII临时路径，脚本默认在项目盘符下的 `ray-tr
 | 配置 | 默认值 | 含义 |
 |---|---|---|
 | `TOTAL_CPUS` | `2` | 平台可分配核数，应与专用 Ray 节点 `--num-cpus` 保持一致 |
+| `TOTAL_MEMORY_MB` | `2048` | 所有未释放任务内存限制之和的预算，单位MiB |
+| `DEFAULT_MEMORY_MB` | `1024` | 任务默认内存硬限制，最小64 MiB |
+| `AGING_INTERVAL_SECONDS` | `60` | 每等待一个间隔，有效优先级加1，不封顶 |
+| `BACKFILL_MAX_BYPASS` | `3` | 每任务最多被后续实际启动任务绕过的次数 |
+| `TRAINPLANE_API_TOKEN` | 空 | 空则自动生成API专属文件；不要提交真实令牌 |
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | 心跳与取消信号服务 |
 | `RAY_ADDRESS` | `http://127.0.0.1:8265` | Ray Jobs HTTP 地址 |
 | `TRAINPLANE_DATA_DIR` | `backend/data` | 元数据与任务文件根目录，改动后视为另一套数据 |
@@ -157,7 +165,7 @@ Windows预缓存脚本还会将本机Arial字体复制到被Git忽略的运行�
 
 最终线程配额修正版已在本机Docker完成一次真实训练：任务 `993c67aa8de849fa`，1 epoch、320图片尺寸、batch1、2核配额，用时107.378秒，退出码0；训练/验证四次检查均为2线程，日志未再次下载资产，生成best.pt与last.pt并释放CPU。原始证据见 [yolo-results.json](docs/yolo-results.json)。此耗时是本机这次运行结果，不是对其他机器的承诺。
 
-打开详情可查看训练日志、退出码、失败原因和每轮指标。权重留在任务执行目录的 `artifacts/train/weights/`，本题 P0 不要求权重下载 API。
+打开详情可查看训练日志、退出码、失败原因、每轮指标和CPU/内存曲线。Docker任务权重在执行目录的 `workspace/artifacts/train/weights/`；历史process模式产物仍在执行目录的 `artifacts/`。默认无网络，启动前必须预缓存模型、数据集和字体。
 
 ## 状态、调度与恢复
 
@@ -171,10 +179,11 @@ stateDiagram-v2
     running --> cancelled: 用户取消且确认执行已停止
 ```
 
-- 先按优先级降序，再按创建时间 FIFO 排队；同优先级顺序稳定。队首资源不足时等待，不做回填和抢占，避免大任务被后续小任务持续绕过。
-- 在 SQLite 事务内预留 CPU、持久化固定 Ray submission ID，然后提交。外部提交结果不确定时保留预留并核对同一 ID，避免重复启动。
+- 有效优先级=`初始优先级+floor(等待秒数/AGING_INTERVAL_SECONDS)`，不封顶；同分按创建时间FIFO。默认低优先级等待足够久后可超过后来高优先级任务，没有运行中抢占。
+- CPU与内存同时适配才选择；前方任务暂不适配时允许后方小任务回填。每实际预留一个回填任务，所有被其绕过的前方任务持久化计数加1；达到默认3次后暂停继续绕过，等待资源汇聚，不按轮询次数累加。
+- 在 SQLite 事务内同时预留CPU和内存、保存回填计数与固定Ray submission ID，然后提交。外部提交结果不确定时保留双资源并核对同一ID。
 - 任务 `running` 后，训练子进程实际启动时间用于计算最大运行时长；排队时间不计入运行超时。
-- 取消运行任务先记录 `stop_reason`、发送Redis取消信号，给worker短暂收尾宽限；若仍存活则强制终止训练进程树并停止Ray任务。确认Ray终态、已记录的本地进程停止后，才释放CPU。停止期间可能仍显示 `running`。
+- 取消运行任务先记录 `stop_reason`、发送Redis取消信号；worker停止独立训练容器，调度器兜底。确认Ray终态、可信worker及训练容器均停止后，才释放CPU与内存。Docker检查失败时保守保留配额。容器OOM导致failed/exit137，并记录memory_limit原因。
 - 任务正常退出码为 0 才标记成功；非零退出、超时、失联都标记失败并记录原因；用户取消标记 cancelled。
 - Worker 每 2 秒上报 Redis 心跳。Redis 临时断连不等于所有 worker 死亡，平台保留资源并暂停新调度；运行超时仍有执行侧兜底。
 - API 重启后先核对所有未释放预留的 Ray Job，再调度新任务。Ray 暂时不可达时不把占用当作空闲；Ray 明确已丢失的既有任务会失败收尾，不自动重跑。
@@ -182,11 +191,12 @@ stateDiagram-v2
 
 ## 接口
 
-所有接口前缀为 `/api`，错误响应使用 FastAPI 的 `detail`。完整参数定义可直接查看 Swagger。
+所有接口前缀为 `/api`，除 `/health` 外均需Bearer令牌，无效令牌返回401。错误响应使用FastAPI的detail，完整参数见Swagger。
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | GET | `/health` | Ray/Redis 连接状态 |
+| GET | `/auth/session` | 验证令牌，返回operator会话 |
 | GET | `/cluster` | 配额、排队/运行计数、节点实际 CPU/内存使用率 |
 | POST | `/jobs` | 提交任务，返回 201 和任务对象 |
 | GET | `/jobs?page=1&page_size=10&status=running&search=任务ID` | 分页、状态筛选、ID 子串搜索 |
@@ -194,6 +204,7 @@ stateDiagram-v2
 | POST | `/jobs/{id}/cancel` | 幂等取消；终态任务保持原状态 |
 | GET | `/jobs/{id}/logs?offset=0&limit=65536` | 从字节位置读取有限长度日志 |
 | GET | `/jobs/{id}/metrics` | 每轮 loss、mAP 等指标 |
+| GET | `/jobs/{id}/resources?after=0&limit=300` | 每2秒容器CPU/内存/进程数采样；after/next_offset为字节游标 |
 
 提交示例：
 
@@ -202,13 +213,16 @@ $Body = @{
     name = 'YOLO CPU 演示'
     command = 'python -m app.train --epochs 1 --imgsz 320 --batch 1'
     cpu = 2
+    memory_mb = 1024
     timeout_seconds = 1800
     priority = 0
 } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/jobs -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($Body))
+$Token = (Get-Content -Raw -LiteralPath backend/.auth/api-token).Trim()
+$Headers = @{ Authorization = "Bearer $Token" }
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/jobs -Headers $Headers -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($Body))
 ```
 
-`cpu` 为正整数且不能超过平台总配额；`priority` 范围 0～10；`timeout_seconds` 范围 1～86400。不存在的任务返回 404，非法参数返回 422。
+`cpu`与`memory_mb`不能超过各自平台总配额，内存至少64 MiB；`priority`初始范围0～10，有效值可因老化超过10；`timeout_seconds`范围1～86400。资源采样中CPU单核忙碌为100%，memory_mb为容器工作集（usage减可回收文件缓存），不是单个进程RSS；memory_usage_mb为含缓存原始用量。终态并读到eof后停止增量请求。
 
 增量日志返回示例：
 
@@ -230,7 +244,9 @@ backend\.venv\Scripts\python.exe scripts\concurrency.py
 
 脚本通过真实 HTTP 接口创建带 `acceptance-` 前缀的短任务，覆盖排队、排队取消、运行取消、自动调度、正常/非零退出、运行超时、心跳超时、分页筛选、UTF-8 增量日志和资源回收，结果保存到 `docs/smoke-results.json`。测试任务仅用于快速复现故障，不能代替真实 YOLO 训练验收。
 
-本机最终Docker版本实测：Linux单元及真实worker测试14项通过；HTTP短任务9项通过；两个实际训练子进程并发及第三任务排队通过；仅重启API容器后，Ray容器、worker及训练PID保持，任务只运行一次并继续调度队列。完整证据与环境前提见 [验收记录](docs/verification.md)。
+首次P0交付版本实测：Linux单元及真实worker测试14项通过；HTTP短任务9项通过；并发、排队、API重启与真实YOLO训练通过。此次隔离和公平调度升级的新增证据另行记录，历史数据不混作新版本结果。见 [验收记录](docs/verification.md)。
+
+隔离与公平调度升级版已实测：Linux完整测试40项通过且无跳过；P0接口9项、新隔离/公平性5组、API重启、网页登录/提交/资源曲线均通过。网页默认YOLO任务5c168822dd054af1在1024 MiB硬限下147.179秒成功，生成权重和66条采样，原始内存峰值718.551 MiB，双配额回收；详见 [升级验收报告](docs/isolation-yolo-results.json) 与 [完整架构说明第13节](docs/architecture-and-implementation.md#s13)。
 
 后端重启恢复、真实 YOLO 与前端交互按 [验收清单](docs/acceptance.md) 检查。实测结果记录在 [verification.md](docs/verification.md)，未执行项目会明确标记，避免把设计当作测试通过。
 
@@ -252,9 +268,9 @@ backend/data/      本机运行数据（不进入Git）
 frontend/          四页Vue应用
 scripts/           Windows启动/停止与HTTP验收
 docs/              验收映射、实测记录、P2设计
-compose.yaml       独立Redis服务
+compose.yaml       API、Ray、Redis及隔离执行配置
 ```
 
-每次执行目录为 `backend/data/jobs/{job_id}/{submission_id}/`，包含配置、独立日志、进程身份、结果和指标。提交历史记录在 SQLite；不删除数据目录即可保留重启后的任务记录。
+每次执行目录为 `backend/data/jobs/{job_id}/{submission_id}/`：根目录为平台控制的config/process/result/container/resource文件、train.log与resources.jsonl；workspace为该任务唯一可写挂载，包含指标、模型权重等。SQLite保存任务、双资源预留、回填计数；旧库启动自动迁移且保留历史任务。退出的任务容器暂留用于检查OOM和退出证据，后续可增加按保留期清理。
 
-P1 采用优先级调度、YOLO 指标采集与展示；没有实现抢占、自动重试、用户配额。P2 只提供 [设计说明](docs/design-p2.md)，不将未实现设计算作交付功能。
+P1已包括优先级老化、受限回填、任务资源采样、YOLO指标采集与展示；没有实现抢占、自动重试、按用户配额或多账号RBAC。P2只提供 [设计说明](docs/design-p2.md)。原生process模式保留作排查，不提供Docker模式的硬隔离保证。
