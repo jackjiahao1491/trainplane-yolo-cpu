@@ -1,0 +1,59 @@
+{
+  "runtime": "docker-linux",
+  "job": {
+    "id": "993c67aa8de849fa",
+    "name": "YOLO CPU · 预缓存与配额复验",
+    "command": "python -m app.train --epochs 1 --imgsz 320 --batch 1",
+    "cpu": 2,
+    "timeout_seconds": 1800,
+    "priority": 0,
+    "status": "succeeded",
+    "created_at": "2026-11-01T08:56:59.087282+00:00",
+    "started_at": "2026-11-01T08:57:02.033236+00:00",
+    "finished_at": "2026-11-01T08:58:49.411397+00:00",
+    "heartbeat_at": "2026-11-01T08:58:46.996701+00:00",
+    "exit_code": 0,
+    "error": null,
+    "ray_submission_id": "993c67aa8de849fa-1",
+    "stop_reason": null
+  },
+  "elapsed_seconds": 107.378161,
+  "metrics": {
+    "items": [
+      {
+        "epoch": 1,
+        "box_loss": 1.69865,
+        "cls_loss": 3.8395,
+        "dfl_loss": 1.49486,
+        "map50": 0.38557,
+        "map50_95": 0.26747
+      }
+    ]
+  },
+  "cpu_threads_verified": 4,
+  "asset_download_seen": false,
+  "weights": {
+    "best.pt": 6491754,
+    "last.pt": 6491754
+  },
+  "cluster_after_completion": {
+    "total_cpus": 2,
+    "allocated_cpus": 0,
+    "available_cpus": 2,
+    "pending_jobs": 0,
+    "running_jobs": 0,
+    "redis_ok": true,
+    "ray_ok": true,
+    "nodes": [
+      {
+        "id": "local",
+        "name": "本机 CPU 节点",
+        "total_cpus": 2,
+        "allocated_cpus": 0,
+        "cpu_percent": 0.0,
+        "memory_percent": 32.7
+      }
+    ]
+  },
+  "other_application_containers_temporarily_stopped": 15
+}

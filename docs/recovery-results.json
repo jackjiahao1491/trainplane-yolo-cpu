@@ -1,0 +1,67 @@
+{
+  "timestamp_utc": "2026-11-01T09:02:53.840661+00:00",
+  "passed": true,
+  "runtime": "docker-linux",
+  "jobs": [
+    "c4460e029fd146af",
+    "cd695a3ff5d347dc"
+  ],
+  "ray_submission_id": "c4460e029fd146af-1",
+  "identity_before": {
+    "worker_pid": 2218,
+    "worker_create_time": 1793523775.33,
+    "pid": 2220,
+    "create_time": 1793523775.6,
+    "started_at": 1793523776.2309477,
+    "children": []
+  },
+  "identity_after": {
+    "worker_pid": 2218,
+    "worker_create_time": 1793523775.33,
+    "pid": 2220,
+    "create_time": 1793523775.6,
+    "started_at": 1793523776.2309477,
+    "children": []
+  },
+  "execution_before": {
+    "api": {
+      "id": "80438816dce95ef4519cb28d488a55abcd9f25f062bdc1d0cebac7f2cd4bd84d",
+      "started_at": "2026-11-01T08:55:51.000171867Z"
+    },
+    "ray": {
+      "id": "38ff21365234cdfc5f67e2b74498b0aedc677510e49e0b82af495b61132b0b17",
+      "started_at": "2026-11-01T08:55:32.647964721Z"
+    }
+  },
+  "execution_after": {
+    "api": {
+      "id": "80438816dce95ef4519cb28d488a55abcd9f25f062bdc1d0cebac7f2cd4bd84d",
+      "started_at": "2026-11-01T09:03:00.953541245Z"
+    },
+    "ray": {
+      "id": "38ff21365234cdfc5f67e2b74498b0aedc677510e49e0b82af495b61132b0b17",
+      "started_at": "2026-11-01T08:55:32.647964721Z"
+    }
+  },
+  "workload_start_count": 1,
+  "final_cluster": {
+    "total_cpus": 2,
+    "allocated_cpus": 0,
+    "available_cpus": 2,
+    "pending_jobs": 0,
+    "running_jobs": 0,
+    "redis_ok": true,
+    "ray_ok": true,
+    "nodes": [
+      {
+        "id": "local",
+        "name": "本机 CPU 节点",
+        "total_cpus": 2,
+        "allocated_cpus": 0,
+        "cpu_percent": 0.0,
+        "memory_percent": 32.9
+      }
+    ]
+  },
+  "elapsed_seconds": 51.515
+}

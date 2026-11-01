@@ -1,0 +1,5 @@
+{
+  "timestamp_utc": "2026-10-31T14:27:01.576973+00:00",
+  "passed": false,
+  "error": "KeyError: 'name'"
+}

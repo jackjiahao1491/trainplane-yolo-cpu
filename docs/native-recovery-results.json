@@ -1,0 +1,66 @@
+{
+  "timestamp_utc": "2026-11-01T08:24:32.559426+00:00",
+  "passed": true,
+  "jobs": [
+    "209ef506805b4103",
+    "dc5dc5f19f124973"
+  ],
+  "ray_submission_id": "209ef506805b4103-1",
+  "identity_before": {
+    "worker_pid": 33664,
+    "worker_create_time": 1793521481.5576987,
+    "pid": 36176,
+    "create_time": 1793521482.7334824,
+    "started_at": 1793521482.7450671,
+    "children": [
+      {
+        "pid": 34672,
+        "create_time": 1793521482.7499807
+      },
+      {
+        "pid": 4064,
+        "create_time": 1793521482.8043933
+      }
+    ]
+  },
+  "identity_after": {
+    "worker_pid": 33664,
+    "worker_create_time": 1793521481.5576987,
+    "pid": 36176,
+    "create_time": 1793521482.7334824,
+    "started_at": 1793521482.7450671,
+    "children": [
+      {
+        "pid": 34672,
+        "create_time": 1793521482.7499807
+      },
+      {
+        "pid": 4064,
+        "create_time": 1793521482.8043933
+      }
+    ]
+  },
+  "api_pid_before": 16720,
+  "api_pid_after": 36820,
+  "workload_start_count": 1,
+  "final_cluster": {
+    "total_cpus": 2,
+    "allocated_cpus": 0,
+    "available_cpus": 2,
+    "pending_jobs": 0,
+    "running_jobs": 0,
+    "redis_ok": true,
+    "ray_ok": true,
+    "nodes": [
+      {
+        "id": "local",
+        "name": "本机 CPU 节点",
+        "total_cpus": 2,
+        "allocated_cpus": 0,
+        "cpu_percent": 16.7,
+        "memory_percent": 90.7
+      }
+    ]
+  },
+  "elapsed_seconds": 63.812
+}

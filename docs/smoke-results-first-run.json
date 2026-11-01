@@ -1,0 +1,72 @@
+{
+  "timestamp_utc": "2026-10-31T14:13:02.215392+00:00",
+  "base_url": "http://127.0.0.1:8000/api",
+  "jobs": [
+    "bb551863a98b473b",
+    "37f0c4c0c3be41c9",
+    "7a78d4d41d154b59",
+    "c8179bbe25554edc",
+    "f40661bf901d4cbf",
+    "5c3024705f324966"
+  ],
+  "results": [
+    {
+      "check": "health_and_resources",
+      "passed": true,
+      "detail": {
+        "health": {
+          "status": "ok",
+          "ray_ok": true,
+          "redis_ok": true,
+          "error": null
+        },
+        "total_cpus": 2
+      }
+    },
+    {
+      "check": "queue_and_pending_cancel",
+      "passed": true,
+      "detail": {
+        "running": "bb551863a98b473b",
+        "queued": "37f0c4c0c3be41c9"
+      }
+    },
+    {
+      "check": "running_cancel_and_auto_dispatch",
+      "passed": true,
+      "detail": {
+        "cancelled": "bb551863a98b473b",
+        "succeeded": "7a78d4d41d154b59"
+      }
+    },
+    {
+      "check": "incremental_logs",
+      "passed": true,
+      "detail": {
+        "job": "7a78d4d41d154b59",
+        "characters": 308
+      }
+    },
+    {
+      "check": "nonzero_exit",
+      "passed": true,
+      "detail": {
+        "job": "c8179bbe25554edc",
+        "exit_code": 7
+      }
+    },
+    {
+      "check": "runtime_timeout",
+      "passed": true,
+      "detail": {
+        "job": "f40661bf901d4cbf",
+        "error": "超过最大运行时长"
+      }
+    },
+    {
+      "check": "exception",
+      "passed": false,
+      "detail": "TimeoutError: Job 5c3024705f324966 did not reach {'failed'}"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "timestamp_utc": "2026-10-31T14:17:55.823404+00:00",
+  "base_url": "http://127.0.0.1:8000/api",
+  "jobs": [
+    "08e39c3d9eb44d2e"
+  ],
+  "results": [
+    {
+      "check": "health_and_resources",
+      "passed": true,
+      "detail": {
+        "health": {
+          "status": "ok",
+          "ray_ok": true,
+          "redis_ok": true,
+          "error": null
+        },
+        "total_cpus": 2
+      }
+    },
+    {
+      "check": "exception",
+      "passed": false,
+      "detail": "TimeoutError: Job 08e39c3d9eb44d2e did not reach {'running'}"
+    }
+  ]
+}

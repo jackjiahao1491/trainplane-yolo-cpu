@@ -1,0 +1,38 @@
+{
+  "timestamp_utc": "2026-11-01T09:14:23.087186+00:00",
+  "health": {
+    "status": "ok",
+    "ray_ok": true,
+    "redis_ok": true,
+    "error": null
+  },
+  "cluster": {
+    "total_cpus": 2,
+    "allocated_cpus": 0,
+    "available_cpus": 2,
+    "pending_jobs": 0,
+    "running_jobs": 0,
+    "redis_ok": true,
+    "ray_ok": true,
+    "nodes": [
+      {
+        "id": "local",
+        "name": "本机 CPU 节点",
+        "total_cpus": 2,
+        "allocated_cpus": 0,
+        "cpu_percent": 9.6,
+        "memory_percent": 83.0
+      }
+    ]
+  },
+  "original_containers_restarted": 15,
+  "all_original_containers_running": true,
+  "original_container_health_checks": [
+    "healthy",
+    "healthy",
+    "healthy",
+    "healthy",
+    "healthy"
+  ],
+  "ray_container_cpu_limit": 2.0
+}

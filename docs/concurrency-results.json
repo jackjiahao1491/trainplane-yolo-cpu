@@ -1,0 +1,723 @@
+{
+  "timestamp_utc": "2026-11-01T09:01:47.675736+00:00",
+  "passed": true,
+  "jobs": [
+    {
+      "id": "f50a440c46d24426",
+      "name": "acceptance-concurrency-1793523707-1",
+      "command": "python -m app.demo --sleep 20",
+      "cpu": 1,
+      "timeout_seconds": 120,
+      "priority": 0,
+      "status": "succeeded",
+      "created_at": "2026-11-01T09:01:47.786426+00:00",
+      "started_at": "2026-11-01T09:01:53.552940+00:00",
+      "finished_at": "2026-11-01T09:02:14.987067+00:00",
+      "heartbeat_at": "2026-11-01T09:02:13.901612+00:00",
+      "exit_code": 0,
+      "error": null,
+      "ray_submission_id": "f50a440c46d24426-1",
+      "stop_reason": null
+    },
+    {
+      "id": "b9c895fac0204967",
+      "name": "acceptance-concurrency-1793523707-2",
+      "command": "python -m app.demo --sleep 20",
+      "cpu": 1,
+      "timeout_seconds": 120,
+      "priority": 0,
+      "status": "succeeded",
+      "created_at": "2026-11-01T09:01:47.860698+00:00",
+      "started_at": "2026-11-01T09:01:54.266148+00:00",
+      "finished_at": "2026-11-01T09:02:15.131555+00:00",
+      "heartbeat_at": "2026-11-01T09:02:14.502353+00:00",
+      "exit_code": 0,
+      "error": null,
+      "ray_submission_id": "b9c895fac0204967-1",
+      "stop_reason": null
+    },
+    {
+      "id": "63b27704a1904c33",
+      "name": "acceptance-concurrency-1793523707-3",
+      "command": "python -m app.demo --sleep 2",
+      "cpu": 1,
+      "timeout_seconds": 120,
+      "priority": 0,
+      "status": "succeeded",
+      "created_at": "2026-11-01T09:01:47.942640+00:00",
+      "started_at": "2026-11-01T09:02:18.054056+00:00",
+      "finished_at": "2026-11-01T09:02:22.311009+00:00",
+      "heartbeat_at": "2026-11-01T09:02:20.090542+00:00",
+      "exit_code": 0,
+      "error": null,
+      "ray_submission_id": "63b27704a1904c33-1",
+      "stop_reason": null
+    }
+  ],
+  "observations": [
+    {
+      "time": 1793523708.1895428,
+      "allocated_cpus": 0,
+      "statuses": [
+        "pending",
+        "pending",
+        "pending"
+      ],
+      "started": [
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "time": 1793523708.8252957,
+      "allocated_cpus": 2,
+      "statuses": [
+        "pending",
+        "pending",
+        "pending"
+      ],
+      "started": [
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "time": 1793523709.5467358,
+      "allocated_cpus": 2,
+      "statuses": [
+        "pending",
+        "pending",
+        "pending"
+      ],
+      "started": [
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "time": 1793523710.46323,
+      "allocated_cpus": 2,
+      "statuses": [
+        "pending",
+        "pending",
+        "pending"
+      ],
+      "started": [
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "time": 1793523711.3425844,
+      "allocated_cpus": 2,
+      "statuses": [
+        "pending",
+        "pending",
+        "pending"
+      ],
+      "started": [
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "time": 1793523712.0740604,
+      "allocated_cpus": 2,
+      "statuses": [
+        "pending",
+        "pending",
+        "pending"
+      ],
+      "started": [
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "time": 1793523712.7665591,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "pending",
+        "pending"
+      ],
+      "started": [
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "time": 1793523713.491005,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "pending",
+        "pending"
+      ],
+      "started": [
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "time": 1793523714.4472394,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        false,
+        false
+      ]
+    },
+    {
+      "time": 1793523715.1769695,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        false,
+        false
+      ]
+    },
+    {
+      "time": 1793523715.823201,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523716.505506,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523717.2716675,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523717.9809856,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523718.596389,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523719.2490678,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523720.1027887,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523720.7740982,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523721.4432201,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523722.101868,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523722.7860022,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523723.4466722,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523724.100141,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523724.8240776,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523725.7800043,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523726.5058517,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523727.6935854,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523728.5575342,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523729.251312,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523730.0041926,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523730.7368104,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523731.3890862,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523732.0445814,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523732.6881802,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523733.3372726,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523734.1257174,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523734.864919,
+      "allocated_cpus": 2,
+      "statuses": [
+        "running",
+        "running",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523735.5921624,
+      "allocated_cpus": 1,
+      "statuses": [
+        "succeeded",
+        "succeeded",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523736.287264,
+      "allocated_cpus": 1,
+      "statuses": [
+        "succeeded",
+        "succeeded",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523736.973861,
+      "allocated_cpus": 1,
+      "statuses": [
+        "succeeded",
+        "succeeded",
+        "pending"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523737.7629435,
+      "allocated_cpus": 1,
+      "statuses": [
+        "succeeded",
+        "succeeded",
+        "running"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523738.4591384,
+      "allocated_cpus": 1,
+      "statuses": [
+        "succeeded",
+        "succeeded",
+        "running"
+      ],
+      "started": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "time": 1793523739.32669,
+      "allocated_cpus": 1,
+      "statuses": [
+        "succeeded",
+        "succeeded",
+        "running"
+      ],
+      "started": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "time": 1793523741.2073965,
+      "allocated_cpus": 1,
+      "statuses": [
+        "succeeded",
+        "succeeded",
+        "running"
+      ],
+      "started": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "time": 1793523742.354514,
+      "allocated_cpus": 1,
+      "statuses": [
+        "succeeded",
+        "succeeded",
+        "running"
+      ],
+      "started": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "time": 1793523743.0628603,
+      "allocated_cpus": 0,
+      "statuses": [
+        "succeeded",
+        "succeeded",
+        "succeeded"
+      ],
+      "started": [
+        true,
+        true,
+        true
+      ]
+    }
+  ],
+  "maximum_observed_allocation": 2,
+  "final_cluster": {
+    "total_cpus": 2,
+    "allocated_cpus": 0,
+    "available_cpus": 2,
+    "pending_jobs": 0,
+    "running_jobs": 0,
+    "redis_ok": true,
+    "ray_ok": true,
+    "nodes": [
+      {
+        "id": "local",
+        "name": "本机 CPU 节点",
+        "total_cpus": 2,
+        "allocated_cpus": 0,
+        "cpu_percent": 9.1,
+        "memory_percent": 33.0
+      }
+    ]
+  }
+}
