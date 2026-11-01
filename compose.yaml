@@ -3,8 +3,9 @@ services:
   ray:
     image: trainplane-backend:local
     build: ./backend
-    command: [python, -m, ray.scripts.scripts, start, --head, --block, --num-cpus=2, --num-gpus=0, --port=6380, --dashboard-host=0.0.0.0, --dashboard-port=8265, --object-store-memory=83886080, --disable-usage-stats]
+    command: [python, -m, ray.scripts.scripts, start, --head, --block, "--num-cpus=${TOTAL_CPUS:-2}", --num-gpus=0, --port=6380, --dashboard-host=0.0.0.0, --dashboard-port=8265, --object-store-memory=83886080, --disable-usage-stats]
     init: true
+    cpus: "${TOTAL_CPUS:-2}"
     shm_size: 128mb
     ports:
       - "127.0.0.1:8265:8265"
@@ -25,7 +26,10 @@ services:
       TRAINPLANE_DATA_DIR: /app/data
       REDIS_URL: redis://redis:6379/0
       RAY_ADDRESS: http://ray:8265
-      TOTAL_CPUS: "2"
+      TOTAL_CPUS: "${TOTAL_CPUS:-2}"
+      HEARTBEAT_TIMEOUT: "${HEARTBEAT_TIMEOUT:-15}"
+      HEARTBEAT_STARTUP_GRACE: "${HEARTBEAT_STARTUP_GRACE:-90}"
+      SCHEDULER_INTERVAL: "${SCHEDULER_INTERVAL:-1}"
     volumes:
       - ./backend/data:/app/data
       - ./backend/yolov8n.pt:/app/yolov8n.pt:ro

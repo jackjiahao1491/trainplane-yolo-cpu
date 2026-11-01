@@ -60,7 +60,7 @@ def main():
     report['images'] = len(images)
     font = Path(os.environ.get('WINDIR', 'C:/Windows')) / 'Fonts' / 'arial.ttf'
     if os.name == 'nt' and font.is_file():
-        font_target = BACKEND / 'data' / 'ultralytics' / 'Arial.ttf'
+        font_target = BACKEND / 'data' / 'ultralytics' / 'Ultralytics' / 'Arial.ttf'
         font_target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(font, font_target)
         report['local_font_cached'] = True
