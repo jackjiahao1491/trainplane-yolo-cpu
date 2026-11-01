@@ -1,11 +1,26 @@
+import { reactive } from 'vue'
+
 export type Status = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+export interface ResourceUsage {
+  timestamp: number
+  cpu_percent: number
+  memory_mb: number
+  memory_limit_mb: number
+  pids: number
+}
+export interface ResourcePage { items: ResourceUsage[]; next_offset: number; finished: boolean; eof: boolean; latest: ResourceUsage | null }
 export interface Job {
   id: string
   name: string
   command: string
   cpu: number
+  memory_mb: number
   timeout_seconds: number
   priority: number
+  effective_priority: number
+  queue_wait_seconds: number
+  backfilled: boolean
+  resource_usage: ResourceUsage | null
   status: Status
   created_at: string
   started_at: string | null
@@ -21,6 +36,11 @@ export interface Cluster {
   total_cpus: number
   allocated_cpus: number
   available_cpus: number
+  total_memory_mb: number
+  allocated_memory_mb: number
+  available_memory_mb: number
+  aging_interval_seconds: number
+  backfill_max_bypass: number
   pending_jobs: number
   running_jobs: number
   redis_ok: boolean
@@ -37,15 +57,56 @@ export const statusLabels: Record<Status, string> = {
 }
 export const terminal = (status: Status) => ['succeeded', 'failed', 'cancelled'].includes(status)
 
+const tokenKey = 'trainplane.access-token'
+let accessToken = sessionStorage.getItem(tokenKey) || ''
+export const session = reactive({ authenticated: false, username: '', checking: Boolean(accessToken) })
+
+export function signOut() {
+  accessToken = ''
+  sessionStorage.removeItem(tokenKey)
+  session.authenticated = false
+  session.username = ''
+}
+
+interface SessionResult { authenticated: true; username: string }
+
+export async function signIn(token: string) {
+  const value = token.trim()
+  if (!value) throw new Error('请输入访问令牌')
+  const result = await api<SessionResult>('/auth/session', { headers: { Authorization: `Bearer ${value}` } })
+  accessToken = value
+  sessionStorage.setItem(tokenKey, value)
+  session.username = result.username
+  session.authenticated = true
+}
+
+export async function restoreSession() {
+  if (!accessToken) return
+  session.checking = true
+  try {
+    const result = await api<SessionResult>('/auth/session')
+    session.username = result.username
+    session.authenticated = true
+  } finally { session.checking = false }
+}
+
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), 15000)
   try {
+    const headers = new Headers(options.headers)
+    headers.set('Content-Type', 'application/json')
+    if (accessToken && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${accessToken}`)
     const response = await fetch(`/api${path}`, {
       ...options,
       signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', ...options.headers },
+      headers,
     })
+    if (response.status === 401) {
+      // A late response from an older session must not clear a newly verified token.
+      if (!session.authenticated || headers.get('Authorization') === `Bearer ${accessToken}`) signOut()
+      throw new Error('访问令牌无效或已失效，请重新登录')
+    }
     if (!response.ok) {
       const data = await response.json().catch(() => null)
       const detail = data?.detail
@@ -78,4 +139,15 @@ export function durationText(job: Job) {
   const seconds = Math.max(0, Math.floor((end - start) / 1000))
   if (!Number.isFinite(seconds)) return '—'
   return seconds < 60 ? `${seconds} 秒` : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`
+}
+
+export function waitText(seconds: number) {
+  const value = Math.max(0, Math.floor(seconds || 0))
+  if (value < 60) return `${value} 秒`
+  if (value < 3600) return `${Math.floor(value / 60)} 分 ${value % 60} 秒`
+  return `${Math.floor(value / 3600)} 时 ${Math.floor(value % 3600 / 60)} 分`
+}
+
+export function memoryText(value?: number | null) {
+  return typeof value === 'number' && Number.isFinite(value) ? `${value.toLocaleString('zh-CN', { maximumFractionDigits: 1 })} MiB` : '—'
 }

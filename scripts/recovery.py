@@ -9,6 +9,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 import psutil
+from platform_http import auth_headers
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +18,7 @@ BASE = "http://127.0.0.1:8000/api"
 
 def request(path, body=None):
     req = urllib.request.Request(BASE + path, data=None if body is None else json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", **auth_headers()})
     with urllib.request.urlopen(req, timeout=15) as response:
         return json.load(response)
 
@@ -76,6 +77,7 @@ def run_script(name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--docker", action="store_true", help="Restart only the Compose API service")
+    parser.add_argument('--output', type=Path, default=ROOT / 'docs/recovery-results.json')
     args = parser.parse_args()
     started_clock = time.monotonic()
     if args.docker:
@@ -104,7 +106,7 @@ def main():
                                   "cpu": cpu, "timeout_seconds": 60, "priority": 0})["id"]
         created.append(queued)
         assert request(f"/jobs/{queued}")["status"] == "pending"
-        print(f"Restarting only API; Ray job {job_id}, PID {identity_before['pid']}", flush=True)
+        print(f"Restarting only API; Ray job {job_id}, worker PID {identity_before['worker_pid']}", flush=True)
         if args.docker:
             print(compose("restart", "api"), flush=True)
         else:
@@ -132,14 +134,18 @@ def main():
         assert recovered["status"] == "running", recovered
         assert recovered["ray_submission_id"] == job["ray_submission_id"]
         identity_after = json.loads((job_folder / "process.json").read_text(encoding="utf-8"))
-        for key in ("worker_pid", "worker_create_time", "pid", "create_time", "started_at"):
-            assert identity_before[key] == identity_after[key], "Worker or training process was started again"
+        for key in ("worker_pid", "worker_create_time", "pid", "create_time", "started_at", "container_id"):
+            assert identity_before.get(key) == identity_after.get(key), "Worker or training execution was started again"
         if args.docker:
-            # Linux process IDs are meaningful only inside the shared API/Ray PID namespace.
+            # Training containers use a separate PID namespace. Verify both execution identities.
             compose("exec", "-T", "api", "python", "-c",
                     "import psutil,sys; p=psutil.Process(int(sys.argv[1])); "
                     "assert p.is_running() and abs(p.create_time()-float(sys.argv[2]))<0.1; print(p.pid)",
-                    str(identity_after["pid"]), str(identity_after["create_time"]))
+                    str(identity_after["worker_pid"]), str(identity_after["worker_create_time"]))
+            if identity_after.get('container_id'):
+                compose('exec', '-T', 'api', 'python', '-c',
+                        'import sys; from app.containers import inspect_task; c=inspect_task(sys.argv[1]); assert c["State"]["Running"] and c["Id"]==sys.argv[2]',
+                        job['ray_submission_id'], identity_after['container_id'])
         else:
             assert abs(psutil.Process(identity_after["pid"]).create_time() - identity_after["create_time"]) < 0.1
         assert request("/cluster")["allocated_cpus"] == cpu
@@ -150,18 +156,18 @@ def main():
         logs = request(f"/jobs/{job_id}/logs?offset=0&limit=65536")["content"]
         assert logs.count("[demo] started") == 1, "The workload ran multiple times"
         final = request("/cluster")
-        assert final["allocated_cpus"] == 0 and final["available_cpus"] == cpu
+        assert final["allocated_cpus"] == 0 and final["available_cpus"] == cpu and final['allocated_memory_mb'] == 0
         report.update({"passed": True, "jobs": created, "ray_submission_id": job["ray_submission_id"],
                        "identity_before": identity_before, "identity_after": identity_after,
                        "execution_before": before, "execution_after": after,
                        "workload_start_count": logs.count("[demo] started"), "final_cluster": final})
-        print("PASS API recovery: same Ray submission ID and training PID, queued task resumed, CPU fully reclaimed.", flush=True)
+        print("PASS API recovery: same Ray/worker/training identity, queued task resumed, CPU and memory fully reclaimed.", flush=True)
     except Exception as exc:
         report["error"] = f"{type(exc).__name__}: {exc}"
         raise
     finally:
         report["elapsed_seconds"] = round(time.monotonic() - started_clock, 3)
-        (ROOT / "docs/recovery-results.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         for current in created:
             try:
                 if request(f"/jobs/{current}")["status"] in {"pending", "running"}:

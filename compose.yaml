@@ -7,11 +7,14 @@ services:
     init: true
     cpus: "${TOTAL_CPUS:-2}"
     shm_size: 128mb
-    ports:
-      - "127.0.0.1:8265:8265"
+    environment:
+      EXECUTION_MODE: docker
+      DOCKER_HOST: unix:///var/run/docker.sock
+      TRAIN_IMAGE: trainplane-backend:local
     volumes:
       - ./backend/data:/app/data
       - ./backend/yolov8n.pt:/app/yolov8n.pt:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8265/api/version', timeout=3)"]
       interval: 5s
@@ -27,12 +30,23 @@ services:
       REDIS_URL: redis://redis:6379/0
       RAY_ADDRESS: http://ray:8265
       TOTAL_CPUS: "${TOTAL_CPUS:-2}"
+      TOTAL_MEMORY_MB: "${TOTAL_MEMORY_MB:-2048}"
+      DEFAULT_MEMORY_MB: "${DEFAULT_MEMORY_MB:-1024}"
+      AGING_INTERVAL_SECONDS: "${AGING_INTERVAL_SECONDS:-60}"
+      BACKFILL_MAX_BYPASS: "${BACKFILL_MAX_BYPASS:-3}"
+      EXECUTION_MODE: docker
+      DOCKER_HOST: unix:///var/run/docker.sock
+      TRAIN_IMAGE: trainplane-backend:local
+      TRAINPLANE_API_TOKEN: "${TRAINPLANE_API_TOKEN:-}"
+      TRAINPLANE_TOKEN_FILE: /app/auth/api-token
       HEARTBEAT_TIMEOUT: "${HEARTBEAT_TIMEOUT:-15}"
       HEARTBEAT_STARTUP_GRACE: "${HEARTBEAT_STARTUP_GRACE:-90}"
       SCHEDULER_INTERVAL: "${SCHEDULER_INTERVAL:-1}"
     volumes:
       - ./backend/data:/app/data
       - ./backend/yolov8n.pt:/app/yolov8n.pt:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./backend/.auth:/app/auth
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -48,8 +62,6 @@ services:
   redis:
     image: redis:7.4-alpine
     command: [redis-server, --appendonly, "yes", --maxmemory, 128mb, --maxmemory-policy, noeviction]
-    ports:
-      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:

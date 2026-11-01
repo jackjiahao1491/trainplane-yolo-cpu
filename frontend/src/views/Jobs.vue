@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, dateText, durationText, statusLabels, terminal, type Job, type JobPage, type Status } from '../api'
+import { api, dateText, durationText, memoryText, statusLabels, terminal, waitText, type Job, type JobPage, type Status } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 
@@ -62,15 +62,16 @@ onUnmounted(() => { disposed = true; ++request; window.clearInterval(timer) })
     <section class="panel jobs-panel">
       <div class="filter-bar"><div class="filter-fields"><el-input v-model="search" placeholder="搜索任务 ID" clearable class="search-input" aria-label="搜索任务 ID" @keyup.enter="filter" @clear="filter"><template #prefix><AppIcon name="search" :size="17" /></template></el-input><el-select v-model="status" placeholder="全部状态" clearable aria-label="任务状态筛选" style="width: 155px" @change="filter"><el-option v-for="(label, value) in statusLabels" :key="value" :label="label" :value="value as Status" /></el-select><el-button @click="filter">查询</el-button></div><el-button :loading="loading" @click="load()"><AppIcon name="refresh" :size="16" /><span>刷新</span></el-button></div>
       <el-table :data="items" v-loading="loading" empty-text="没有符合条件的任务" class="jobs-table">
-        <el-table-column label="任务" min-width="225"><template #default="{ row }"><RouterLink :to="`/jobs/${row.id}`" class="job-name">{{ row.name }}</RouterLink><div class="mono secondary-id">{{ row.id }}</div></template></el-table-column>
+        <el-table-column label="任务" min-width="225"><template #default="{ row }"><RouterLink :to="`/jobs/${row.id}`" class="job-name">{{ row.name }}</RouterLink><span v-if="row.backfilled" class="backfill-badge">回填</span><div class="mono secondary-id">{{ row.id }}</div></template></el-table-column>
         <el-table-column label="状态" min-width="120"><template #default="{ row }"><StatusBadge :status="row.status" :cancelling="!!row.stop_reason && !terminal(row.status)" /></template></el-table-column>
-        <el-table-column label="CPU / 优先级" min-width="115"><template #default="{ row }"><span>{{ row.cpu }} 核</span><span class="priority-label">P{{ row.priority }}</span></template></el-table-column>
+        <el-table-column label="资源配额" min-width="125"><template #default="{ row }"><span>{{ row.cpu }} 核 CPU</span><div class="cell-secondary">{{ memoryText(row.memory_mb) }}</div></template></el-table-column>
+        <el-table-column label="调度 / 等待" min-width="150"><template #default="{ row }"><span>有效 P{{ row.effective_priority ?? row.priority }}</span><span class="priority-label">初始 P{{ row.priority }}</span><div class="cell-secondary">等待 {{ waitText(row.queue_wait_seconds) }}</div></template></el-table-column>
         <el-table-column label="运行时长" min-width="120"><template #default="{ row }">{{ durationText(row) }}</template></el-table-column>
         <el-table-column label="提交时间" min-width="155"><template #default="{ row }">{{ dateText(row.created_at) }}</template></el-table-column>
         <el-table-column label="操作" min-width="185" fixed="right"><template #default="{ row }"><div class="row-actions"><RouterLink :to="`/jobs/${row.id}`" class="text-link">详情</RouterLink><RouterLink :to="`/jobs/${row.id}#logs`" class="text-link">日志</RouterLink><el-button link type="danger" :disabled="terminal(row.status) || !!row.stop_reason" :loading="cancelling.includes(row.id)" @click="cancel(row)">取消</el-button></div></template></el-table-column>
       </el-table>
       <div class="table-bottom"><span class="muted">共 {{ total }} 个任务 · 每 3 秒自动刷新</span><el-pagination v-model:current-page="page" v-model:page-size="pageSize" :total="total" :page-sizes="[10, 20, 50]" layout="sizes, prev, pager, next" background @current-change="load()" @size-change="filter" /></div>
     </section>
-    <div class="inline-tip"><AppIcon name="clock" :size="17" /><span>资源不足时任务自动排队；运行任务结束后，平台将自动分配释放的 CPU。</span></div>
+    <div class="inline-tip"><AppIcon name="clock" :size="17" /><span>CPU 或内存配额不足时自动排队；等待老化可提升有效优先级，回填任务以标签标识。</span></div>
   </div>
 </template>

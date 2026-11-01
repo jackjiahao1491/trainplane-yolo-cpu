@@ -21,6 +21,14 @@ def initialize():
         db.execute('CREATE INDEX IF NOT EXISTS jobs_queue ON jobs(status, priority DESC, created_at)')
         if 'stop_requested_at' not in {row[1] for row in db.execute('PRAGMA table_info(jobs)')}:
             db.execute('ALTER TABLE jobs ADD COLUMN stop_requested_at REAL')
+        columns = {row[1] for row in db.execute('PRAGMA table_info(jobs)')}
+        for name, definition in {
+            'memory_mb': 'INTEGER NOT NULL DEFAULT 1024',
+            'bypass_count': 'INTEGER NOT NULL DEFAULT 0',
+            'backfilled': 'INTEGER NOT NULL DEFAULT 0',
+        }.items():
+            if name not in columns:
+                db.execute(f'ALTER TABLE jobs ADD COLUMN {name} {definition}')
 
 
 @contextmanager

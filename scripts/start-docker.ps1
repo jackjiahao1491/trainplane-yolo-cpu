@@ -26,5 +26,6 @@ while ((Get-Date) -lt $TaskDeadline) {
 if (!$TaskReady) { throw 'API dependencies did not become healthy. Inspect docker compose logs api ray redis.' }
 if (!$ApiOnly) { & (Join-Path $PSScriptRoot 'start.ps1') -WebOnly }
 Write-Host 'API (Docker Linux): http://127.0.0.1:8000/docs'
+Write-Host 'Login token: backend/.auth/api-token (or TRAINPLANE_API_TOKEN if configured). Keep it private.'
 if (!$ApiOnly) { Write-Host 'Web (Windows Node): http://127.0.0.1:5173' }
 

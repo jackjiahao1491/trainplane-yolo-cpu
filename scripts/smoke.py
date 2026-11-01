@@ -7,6 +7,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from platform_http import auth_headers
 
 
 def main():
@@ -22,7 +23,7 @@ def main():
         req = urllib.request.Request(
             args.base_url + path,
             data=None if data is None else json.dumps(data).encode(),
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **auth_headers()},
         )
         with urllib.request.urlopen(req, timeout=15) as response:
             return json.load(response)

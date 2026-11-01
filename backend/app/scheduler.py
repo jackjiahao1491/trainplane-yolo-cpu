@@ -37,6 +37,36 @@ def read_json(path):
         return {}
 
 
+def effective_priority(job, now=None):
+    waited = max(0, (time.time() if now is None else now) - job['created_at'])
+    return job['priority'] + int(waited // config.AGING_INTERVAL_SECONDS)
+
+
+def local_identities(job):
+    info = read_json(job_dir(job) / 'process.json')
+    worker = {'pid': info.get('worker_pid'), 'create_time': info.get('worker_create_time')}
+    if config.EXECUTION_MODE == 'docker':
+        # Training PIDs belong to another namespace; a matching number here may be unrelated.
+        return [worker]
+    return list(info.get('children', [])) + [
+        {'pid': info.get('pid'), 'create_time': info.get('create_time')}, worker]
+
+
+def container_running(job):
+    if config.EXECUTION_MODE != 'docker' or not job.get('ray_submission_id'):
+        return False
+    from .containers import inspect_task
+    info = inspect_task(job['ray_submission_id'])
+    # Only an explicit stopped state or 404 proves the container has stopped.
+    # Inspection/permission/network errors propagate, keeping both reservations.
+    if info is None:
+        return False
+    state = info['State']
+    if not isinstance(state.get('Running'), bool):
+        raise RuntimeError('Docker inspection did not return a valid running state')
+    return state['Running']
+
+
 def process_alive(pid, created):
     if not pid or not created:
         return False
@@ -49,11 +79,10 @@ def process_alive(pid, created):
 
 def stop_local(job):
     """Kill only the recorded process tree, checking creation time against PID reuse."""
-    info = read_json(job_dir(job) / 'process.json')
-    identities = list(info.get('children', [])) + [
-        {'pid': info.get('pid'), 'create_time': info.get('create_time')},
-        {'pid': info.get('worker_pid'), 'create_time': info.get('worker_create_time')}]
-    for identity in identities:
+    if config.EXECUTION_MODE == 'docker' and job.get('ray_submission_id'):
+        from .containers import stop_task
+        stop_task(job['ray_submission_id'])
+    for identity in local_identities(job):
         if not process_alive(identity['pid'], identity['create_time']):
             continue
         try:
@@ -71,11 +100,8 @@ def stop_local(job):
 
 
 def local_alive(job):
-    info = read_json(job_dir(job) / 'process.json')
-    identities = list(info.get('children', [])) + [
-        {'pid': info.get('pid'), 'create_time': info.get('create_time')},
-        {'pid': info.get('worker_pid'), 'create_time': info.get('worker_create_time')}]
-    return any(process_alive(p['pid'], p['create_time']) for p in identities)
+    running = container_running(job)
+    return running or any(process_alive(p['pid'], p['create_time']) for p in local_identities(job))
 
 
 class Scheduler:
@@ -161,7 +187,7 @@ class Scheduler:
         folder = job_dir(job)
         folder.mkdir(parents=True, exist_ok=True)
         (folder / 'config.json').write_text(json.dumps({k: job[k] for k in
-             ['name', 'command', 'cpu', 'timeout_seconds']}, ensure_ascii=False), encoding='utf-8')
+             ['name', 'command', 'cpu', 'memory_mb', 'timeout_seconds']}, ensure_ascii=False), encoding='utf-8')
         env = {
             'TRAINPLANE_DATA_DIR': str(config.DATA), 'REDIS_URL': config.REDIS_URL,
             'TRAIN_CPUS': str(job['cpu']), 'TRAIN_JOB_DIR': str(folder),
@@ -169,7 +195,11 @@ class Scheduler:
             'OMP_NUM_THREADS': str(job['cpu']), 'MKL_NUM_THREADS': str(job['cpu']),
             'YOLO_CONFIG_DIR': str(config.DATA / 'ultralytics'),
             'PYTHONPATH': str(config.ROOT),
+            'EXECUTION_MODE': config.EXECUTION_MODE,
         }
+        for name in ('TRAIN_IMAGE', 'DOCKER_HOST'):
+            if name in os.environ:
+                env[name] = os.environ[name]
         args = [sys.executable, '-m', 'app.worker', '--job-id', job['id'],
                 '--attempt-id', job['ray_submission_id']]
         entrypoint = subprocess.list2cmdline(args) if os.name == 'nt' else __import__('shlex').join(args)
@@ -181,19 +211,33 @@ class Scheduler:
     def dispatch(self):
         with store.connection() as db:
             db.execute('BEGIN IMMEDIATE')
-            used = db.execute('SELECT COALESCE(SUM(cpu),0) FROM jobs WHERE reserved=1').fetchone()[0]
-            queue = db.execute("SELECT * FROM jobs WHERE status='pending' AND reserved=0 ORDER BY priority DESC,created_at,id").fetchall()
+            used_cpu, used_memory = db.execute(
+                'SELECT COALESCE(SUM(cpu),0), COALESCE(SUM(memory_mb),0) FROM jobs WHERE reserved=1'
+            ).fetchone()
+            now = time.time()
+            queue = [dict(row) for row in db.execute("SELECT * FROM jobs WHERE status='pending' AND reserved=0")]
+            queue.sort(key=lambda job: (-effective_priority(job, now), job['created_at'], job['id']))
             selected = []
-            for row in queue:
-                job = dict(row)
-                if job['cpu'] > config.TOTAL_CPUS - used:
-                    # Strict priority/FIFO: no backfill that could starve a large first job.
+            blocked = []
+            for job in queue:
+                if any(waiting['bypass_count'] >= config.BACKFILL_MAX_BYPASS for waiting in blocked):
                     break
+                if (job['cpu'] > config.TOTAL_CPUS - used_cpu
+                        or job['memory_mb'] > config.TOTAL_MEMORY_MB - used_memory):
+                    blocked.append(job)
+                    continue
+                # Count real reservations, never polling ticks. Protect every skipped job.
+                for waiting in blocked:
+                    waiting['bypass_count'] += 1
+                    db.execute('UPDATE jobs SET bypass_count=bypass_count+1 WHERE id=?', (waiting['id'],))
                 attempt = job['id'] + '-1'
-                db.execute('UPDATE jobs SET reserved=1,ray_submission_id=? WHERE id=?', (attempt, job['id']))
-                job.update(reserved=1, ray_submission_id=attempt)
+                backfilled = int(bool(blocked))
+                db.execute('UPDATE jobs SET reserved=1,ray_submission_id=?,backfilled=? WHERE id=?',
+                           (attempt, backfilled, job['id']))
+                job.update(reserved=1, ray_submission_id=attempt, backfilled=backfilled)
                 selected.append(job)
-                used += job['cpu']
+                used_cpu += job['cpu']
+                used_memory += job['memory_mb']
         for job in selected:
             try:
                 self.submit(job)

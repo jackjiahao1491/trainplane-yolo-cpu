@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { api, dateText, terminal, type Cluster, type Job, type JobPage } from '../api'
+import { api, dateText, memoryText, terminal, type Cluster, type Job, type JobPage } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 
@@ -14,6 +14,7 @@ let busy = false
 let disposed = false
 let timer: number | undefined
 const percent = computed(() => cluster.value?.total_cpus ? Math.round(cluster.value.allocated_cpus / cluster.value.total_cpus * 100) : 0)
+const memoryPercent = computed(() => cluster.value?.total_memory_mb ? Math.min(100, Math.round(cluster.value.allocated_memory_mb / cluster.value.total_memory_mb * 100)) : 0)
 const resourceCards = computed(() => [
   { label: 'CPU 总配额', value: cluster.value?.total_cpus, unit: '核', icon: 'cpu', note: '用于任务调度的逻辑配额', color: 'teal' },
   { label: '已分配 CPU', value: cluster.value?.allocated_cpus, unit: '核', icon: 'play', note: '运行及启动中任务的资源预留', color: 'blue' },
@@ -61,6 +62,7 @@ onUnmounted(() => { disposed = true; window.clearInterval(timer) })
     </section>
     <section class="panel">
       <div class="panel-heading"><div><h2>节点资源</h2><p>资源分配与机器实际负载分别展示</p></div><div class="refresh-meta"><span v-if="updated">更新于 {{ updated }}</span><el-button text :loading="loading" aria-label="刷新资源" @click="load"><AppIcon name="refresh" :size="17" /></el-button></div></div>
+      <div class="memory-quota-strip"><div><span>内存总配额</span><strong>{{ memoryText(cluster?.total_memory_mb) }}</strong></div><div><span>已分配内存</span><strong>{{ memoryText(cluster?.allocated_memory_mb) }}</strong></div><div><span>可用内存</span><strong>{{ memoryText(cluster?.available_memory_mb) }}</strong></div><div class="memory-quota-progress"><div class="progress-label"><span>内存配额分配率</span><span>{{ cluster ? memoryPercent : '—' }}%</span></div><el-progress :percentage="memoryPercent" :show-text="false" :stroke-width="6" /></div></div>
       <el-table :data="cluster?.nodes || []" v-loading="loading" empty-text="暂无节点信息">
         <el-table-column label="节点" min-width="210"><template #default="{ row }"><div class="node-cell"><span class="node-icon"><AppIcon name="cpu" :size="21" /></span><div><strong>{{ row.name }}</strong><small>{{ row.id }}</small></div></div></template></el-table-column>
         <el-table-column label="CPU 配额" min-width="180"><template #default="{ row }"><div class="progress-label"><span>{{ row.allocated_cpus }} / {{ row.total_cpus }} 核</span><span>{{ row.total_cpus ? Math.round(row.allocated_cpus / row.total_cpus * 100) : 0 }}%</span></div><el-progress :percentage="row.total_cpus ? Math.min(100, Math.round(row.allocated_cpus / row.total_cpus * 100)) : 0" :show-text="false" :stroke-width="6" /></template></el-table-column>
@@ -69,11 +71,12 @@ onUnmounted(() => { disposed = true; window.clearInterval(timer) })
       </el-table>
       <div class="service-status"><span><i :class="['service-dot', { healthy: cluster?.ray_ok }]" />Ray {{ cluster ? cluster.ray_ok ? '已连接' : '未连接' : '待检测' }}</span><span><i :class="['service-dot', { healthy: cluster?.redis_ok }]" />Redis {{ cluster ? cluster.redis_ok ? '已连接' : '未连接' : '待检测' }}</span><span class="muted">CPU 配额用于调度，不等同于机器实际使用率</span></div>
     </section>
+    <div class="scheduling-note"><AppIcon name="clock" :size="18" /><div><strong>公平调度</strong><p>等待任务按有效优先级调度，老化间隔 {{ cluster?.aging_interval_seconds ?? '—' }} 秒；资源空余时允许回填，队首最多被越过 {{ cluster?.backfill_max_bypass ?? '—' }} 次。运行中的任务不被抢占。</p></div></div>
     <section class="panel recent-panel"><div class="panel-heading"><div><h2>最近任务 <span class="heading-count">RECENT ACTIVITY</span></h2><p>最近提交的 5 个训练任务</p></div><RouterLink to="/jobs" class="text-link">全部任务<AppIcon name="arrow" :size="16" /></RouterLink></div>
       <el-table :data="jobs" empty-text="还没有训练任务，提交第一个任务开始吧">
-        <el-table-column label="任务名称" min-width="210"><template #default="{ row }"><RouterLink :to="`/jobs/${row.id}`" class="job-name">{{ row.name }}</RouterLink><div class="mono secondary-id">{{ row.id }}</div></template></el-table-column>
+        <el-table-column label="任务名称" min-width="210"><template #default="{ row }"><RouterLink :to="`/jobs/${row.id}`" class="job-name">{{ row.name }}</RouterLink><span v-if="row.backfilled" class="backfill-badge">回填</span><div class="mono secondary-id">{{ row.id }}</div></template></el-table-column>
         <el-table-column label="状态" min-width="120"><template #default="{ row }"><StatusBadge :status="row.status" :cancelling="!!row.stop_reason && !terminal(row.status)" /></template></el-table-column>
-        <el-table-column label="CPU" width="90"><template #default="{ row }">{{ row.cpu }} 核</template></el-table-column>
+        <el-table-column label="资源配额" min-width="135"><template #default="{ row }"><span>{{ row.cpu }} 核 CPU</span><div class="cell-secondary">{{ memoryText(row.memory_mb) }}</div></template></el-table-column>
         <el-table-column label="提交时间" min-width="160"><template #default="{ row }">{{ dateText(row.created_at) }}</template></el-table-column>
         <el-table-column label="操作" width="90" align="right"><template #default="{ row }"><RouterLink :to="`/jobs/${row.id}`" class="text-link">详情<AppIcon name="arrow" :size="14" /></RouterLink></template></el-table-column>
       </el-table>

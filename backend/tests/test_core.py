@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app import config, store
 from app.main import app
+from app.auth import get_token
 from app.scheduler import Scheduler, job_dir
 
 
@@ -52,7 +53,7 @@ def setup(tmp_path, monkeypatch):
     scheduler.client = RayStub()
     scheduler.redis = RedisStub()
     scheduler.redis_ok = True
-    return scheduler, TestClient(app)
+    return scheduler, TestClient(app, headers={'Authorization': 'Bearer ' + get_token()})
 
 
 def create(client, name='test', **kwargs):

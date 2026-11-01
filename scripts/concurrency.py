@@ -1,9 +1,11 @@
 """Prove two real one-CPU workloads overlap, a third queues, and allocation stays bounded."""
+import argparse
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 import time
 import urllib.request
+from platform_http import auth_headers
 
 
 BASE = "http://127.0.0.1:8000/api"
@@ -11,12 +13,15 @@ BASE = "http://127.0.0.1:8000/api"
 
 def request(path, body=None):
     req = urllib.request.Request(BASE + path, data=None if body is None else json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", **auth_headers()})
     with urllib.request.urlopen(req, timeout=15) as response:
         return json.load(response)
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output', type=Path, default=Path(__file__).resolve().parents[1] / 'docs/concurrency-results.json')
+    args = parser.parse_args()
     created = []
     observations = []
     report = {"timestamp_utc": datetime.now(timezone.utc).isoformat(), "passed": False}
@@ -67,7 +72,7 @@ def main():
         report.update({"jobs": created, "observations": observations, "error": f"{type(exc).__name__}: {exc}"})
         raise
     finally:
-        output = Path(__file__).resolve().parents[1] / "docs/concurrency-results.json"
+        output = args.output
         output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         for job_id in created:
             try:
