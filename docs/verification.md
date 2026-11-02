@@ -1,6 +1,23 @@
 # 本机验证记录
 
-日期：2026-10-31～2026-11-01（Asia/Shanghai）。本文将设计、自动化检查和实测结果分开记录；未运行的项目不记为通过。
+日期：2026-10-31～2026-11-02（Asia/Shanghai）。本文将设计、自动化检查和实测结果分开记录；未运行的项目不记为通过。
+
+## 2026-11-02 SSE实时日志升级
+
+本轮只部署更新API容器；Ray与Redis未重启。日志由前端带Bearer Header的fetch流读取，原offset GET保留；详情、指标与资源仍轮询。以下为本次实际执行结果，不用此前隔离/公平性或训练历史替代SSE验收。
+
+| 检查 | 实际结果与证据 |
+|---|---|
+| Linux全量测试 | 48 passed、无skip、52.68秒，包含真实Docker集成；见 [sse-unit-results.json](sse-unit-results.json) |
+| 前端测试与构建 | npm test 13 passed，生产构建成功19.01秒；同上报告 |
+| Vite代理SSE四组 | 鉴权与预响应码、10秒空闲心跳及pending→running同流与尾部、Last-Event-ID无重/漏续传及API重启、游标错误验证均通过；见 [sse-results.json](sse-results.json) |
+| 活跃流API重启 | 5.64秒；Ray和执行ID保持，按已消费字节续读；结束后CPU预留0、可用2，内存预留0、可用2048 MiB |
+| 浏览器真实交互 | 任务cfde268bf3984f4f建立两条SSE，URL仅有offset0/1035无凭据；API重启自动重连、暂停/复制成功、取消后end；5004字符与持久日志去ANSI/CR后一致、demo仅启动一次。见 [sse-browser-results.json](sse-browser-results.json) |
+| 截图 | [实时流](screenshots/sse-live.png)、[续传完成](screenshots/sse-finished.png) |
+
+首轮 [sse-results-first-run.json](sse-results-first-run.json) 未通过：worker的Docker SDK读取Engine发生5秒ReadTimeout，导致短任务失败。后续对失败任务的历史SSE与持久日志诊断一致（170字符）。未修改worker或调度逻辑掩盖该失败；第二轮四组完整通过，失败记录与diagnosis保留。
+
+SSE响应前验证401/404/416/422；开始200后发生读错误发送error JSON并关闭。服务器0.5秒tail、10秒注释心跳，尾部先log后空content end；客户端完整帧消费后才推进字节游标，30秒无字节看门狗和有上限退避。Uvicorn优雅退出时限5秒防活跃流无限拖住API重启。浏览器证据验证了该次网络/重启恢复，不将它夸大为无限保留、跨文件轮转或全局恰好一次保证。
 
 ## 2026-11-01 资源隔离与公平调度升级
 

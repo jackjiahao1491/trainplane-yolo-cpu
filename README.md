@@ -24,7 +24,7 @@ GitHub 仓库：[jackjiahao1491/trainplane-yolo-cpu](https://github.com/jackjiah
 
 ```mermaid
 flowchart LR
-    UI[Vue3 / Element Plus<br/>四个业务页面] -->|HTTP / 日志增量轮询| API[FastAPI<br/>单调度器]
+    UI[Vue3 / Element Plus<br/>四个业务页面] -->|Bearer HTTP / SSE日志流| API[FastAPI<br/>单调度器]
     API <-->|业务状态 / CPU预留 / 提交ID| DB[(SQLite WAL)]
     API -->|submit / status / stop| RAY[独立 Ray Jobs 服务]
     RAY -->|CPU入口资源预留| WORKER[任务 Worker]
@@ -203,6 +203,7 @@ stateDiagram-v2
 | GET | `/jobs/{id}` | 任务详情，含退出码、失败原因、停止原因、执行ID |
 | POST | `/jobs/{id}/cancel` | 幂等取消；终态任务保持原状态 |
 | GET | `/jobs/{id}/logs?offset=0&limit=65536` | 从字节位置读取有限长度日志 |
+| GET | `/jobs/{id}/logs/stream?offset=0` | Bearer鉴权SSE日志流，Last-Event-ID字节续传，log/end/error事件 |
 | GET | `/jobs/{id}/metrics` | 每轮 loss、mAP 等指标 |
 | GET | `/jobs/{id}/resources?after=0&limit=300` | 每2秒容器CPU/内存/进程数采样；after/next_offset为字节游标 |
 
@@ -230,7 +231,19 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/jobs -Headers $Hea
 {"content":"[demo] started\n", "next_offset":15, "eof":true, "finished":false}
 ```
 
-`offset` 和 `next_offset` 是文件字节位置，不是字符数量。`limit` 为 4～1048576 字节；服务端避免在 UTF-8 字符中间截断。前端始终使用返回的 `next_offset`，不能自行按 JS 字符串长度递增。`eof=true` 只表示读到当前文件末尾，仍在运行时后面可能有新日志；应同时参考 `finished`。请求位置超过现有文件大小返回 416。日志按纯文本渲染，训练输出中的 HTML 不会执行。
+`offset` 和 `next_offset` 是文件字节位置，不是字符数量。原GET增量接口保留，`limit` 为4～1048576字节；服务端避免在UTF-8字符中间截断。前端使用服务器游标，不按JS字符串长度推算。`eof=true` 只是当前文件末尾，需同时参考 `finished`。位置超出文件大小，或文件尚不存在但offset大于0，均返回416；不会静默回退到0。日志按纯文本显示，不执行其中HTML。
+
+### SSE实时日志与断线接续
+
+详情页日志使用 `fetch + ReadableStream` 消费 `/api/jobs/{id}/logs/stream?offset=0`，在Authorization Header中携带Bearer，**不把令牌放进URL**；详情、资源采样和训练指标仍各自轮询。原offset GET是兼容只读接口，没有自动降级为日志轮询。
+
+- `Last-Event-ID` 是已消费日志的字节位置，存在时优先于query offset；本平台要求非负ASCII十进制、最多32字符。预响应校验使用401/404/416/422，校验后才开始HTTP200事件流。
+- 服务端先发 `retry: 1000`，约每0.5秒检查文件；有内容发 `log`，id与data.next_offset一致。任务终态后先排空全部尾部，再发空content的 `end`，沿用最终游标，不重复最后一段。
+- 空闲约10秒发送 `: heartbeat` 注释。流开始后的读错误发JSON `error`事件后关闭；响应带 `Cache-Control: no-cache, no-transform`、`X-Accel-Buffering: no`。
+- 前端只在完整事件被消费后推进游标；网络中断按1/2/4/8/10秒退避续传，30秒未收到任何字节触发连接看门狗。401退出门禁，其他4xx/协议错误停止自动重连；416可由用户点击“从头重新读取”，不会自动清空历史。
+- 切任务、退出登录、卸载页面会Abort连接。暂停滚动仍持续消费，复制当前清理后的可见内容；面板仍只留最近500k原始字符。
+
+API容器设置Uvicorn `--timeout-graceful-shutdown 5`，避免活跃SSE无限拖住仅API重启；Ray与训练不随API重启。协议与代码详见 [架构说明第8节](docs/architecture-and-implementation.md#s8)，标准格式参考 [WHATWG SSE](https://html.spec.whatwg.org/multipage/server-sent-events.html)。
 
 ## 验收与演示
 
@@ -247,6 +260,16 @@ backend\.venv\Scripts\python.exe scripts\concurrency.py
 首次P0交付版本实测：Linux单元及真实worker测试14项通过；HTTP短任务9项通过；并发、排队、API重启与真实YOLO训练通过。此次隔离和公平调度升级的新增证据另行记录，历史数据不混作新版本结果。见 [验收记录](docs/verification.md)。
 
 隔离与公平调度升级版已实测：Linux完整测试40项通过且无跳过；P0接口9项、新隔离/公平性5组、API重启、网页登录/提交/资源曲线均通过。网页默认YOLO任务5c168822dd054af1在1024 MiB硬限下147.179秒成功，生成权重和66条采样，原始内存峰值718.551 MiB，双配额回收；详见 [升级验收报告](docs/isolation-yolo-results.json) 与 [完整架构说明第13节](docs/architecture-and-implementation.md#s13)。
+
+2026-11-02 SSE升级已实测：后端48项通过且无skip，前端13项通过、构建成功；Vite代理下四组SSE验收全过，含10秒心跳、排队到运行同流、尾部排空、Last-Event-ID恢复与API活跃连接重启（5.64秒）。浏览器实际API重启后自动续传、暂停/复制、取消至end均通过，5004字符与持久日志一致、任务只启动一次。见 [单元/构建](docs/sse-unit-results.json)、[CLI实测](docs/sse-results.json)、[浏览器实测](docs/sse-browser-results.json)。首轮因worker Docker SDK瞬时超时导致任务失败，未计全通过，记录另存 [首轮报告](docs/sse-results-first-run.json)。
+
+平台空闲时可复现带API重启的SSE检查（默认走Vite代理，只重启本项目API）：
+
+```powershell
+backend\.venv\Scripts\python.exe scripts\sse_smoke.py --restart-api --restart-delay 20
+```
+
+SSE截图：[实时连接](docs/screenshots/sse-live.png)、[断线接续并完成](docs/screenshots/sse-finished.png)。
 
 后端重启恢复、真实 YOLO 与前端交互按 [验收清单](docs/acceptance.md) 检查。实测结果记录在 [verification.md](docs/verification.md)，未执行项目会明确标记，避免把设计当作测试通过。
 

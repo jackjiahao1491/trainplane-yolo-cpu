@@ -1,0 +1,58 @@
+{
+  "timestamp_utc": "2026-11-02T07:21:07.195516+00:00",
+  "passed": true,
+  "backend": {
+    "passed": 48,
+    "skipped": 0,
+    "elapsed_seconds": 52.68,
+    "includes_real_docker_tests": true
+  },
+  "frontend": {
+    "passed": 13,
+    "build_passed": true,
+    "build_seconds": 19.01
+  },
+  "health": {
+    "status": "ok",
+    "ray_ok": true,
+    "redis_ok": true,
+    "error": null
+  },
+  "final_cluster": {
+    "total_cpus": 2,
+    "allocated_cpus": 0,
+    "available_cpus": 2,
+    "total_memory_mb": 2048,
+    "allocated_memory_mb": 0,
+    "available_memory_mb": 2048,
+    "aging_interval_seconds": 60.0,
+    "backfill_max_bypass": 3,
+    "execution_mode": "docker",
+    "pending_jobs": 0,
+    "running_jobs": 0,
+    "redis_ok": true,
+    "ray_ok": true,
+    "nodes": [
+      {
+        "id": "local",
+        "name": "本机 CPU 节点",
+        "total_cpus": 2,
+        "allocated_cpus": 0,
+        "cpu_percent": 20.0,
+        "memory_percent": 76.4
+      }
+    ]
+  },
+  "scope": [
+    "SSE history and UTF8 byte cursor",
+    "validation before streaming response",
+    "pending attempt path transition",
+    "concurrent terminal tail",
+    "truncated and removed log errors",
+    "heartbeat, disconnect and cancellation cleanup",
+    "Bearer and Last-Event-ID",
+    "frontend partial-frame reconnect and replay deduplication",
+    "route/logout/unmount abort and watchdog",
+    "original isolation and scheduling regressions"
+  ]
+}

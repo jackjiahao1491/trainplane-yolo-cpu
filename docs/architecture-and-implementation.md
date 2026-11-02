@@ -58,7 +58,7 @@ flowchart LR
   TASK -->|仅可写/task| SPACE[workspace / 指标和模型权重]
   API -->|有界读取| CONTROL
   API -->|安全读取指标| SPACE
-  API -->|日志 / 指标 / 资源JSON| UI
+  API -->|SSE日志 / 指标与资源JSON| UI
 ```
 
 | 组件 | 职责 | 代码入口 |
@@ -238,8 +238,9 @@ API重启不将账本清零，也不把仍在运行的容器当空闲；共享�
 %% diagram: observability
 flowchart LR
   TRAIN[训练容器stdout/stderr] --> LOG[可信worker追加attempt根train.log]
-  LOG --> LAPI[GET logs / 字节offset有界读取]
-  LAPI --> UI[1.5秒终端 / ANSI清理 / 最近500k原始字符]
+  LOG --> LAPI[SSE日志流 / 0.5秒tail / UTF8保护]
+  LAPI --> UI[Bearer流消费 / Last-Event-ID续传 / 500k字符]
+  LOG --> BACKUP[保留GET logs / offset只读接口]
   EPOCH[YOLO每epoch回调] --> METRICS[workspace/metrics.jsonl]
   METRICS --> MAPI[安全GET metrics / 有限记录与字节]
   MAPI --> MCHART[Loss和mAP SVG图]
@@ -248,7 +249,7 @@ flowchart LR
   RAPI --> RCHART[CPU和内存工作集SVG / 最新值与进程数]
 ```
 
-### 日志
+### 日志：SSE流与保留的offset GET
 
 每attempt独立train.log，可信worker捕获训练容器stdout/stderr追加，训练容器不挂载该控制文件。API seek(offset)有界读取，不一次从Ray获取全量历史。
 
@@ -258,9 +259,42 @@ flowchart LR
 | content / next_offset | UTF-8文本及实际消耗后的字节位置；前端直接使用next_offset，不按文本长度推算 |
 | eof / finished | 当前文件已读到末尾 / 任务已终态；两者都真才停止前端日志请求 |
 
-UTF-8跨边界或运行中半字符暂不消费，下一次接续；终态非法残字节用替换字符。offset超界416，文件未生成返回空。当前不轮转或截断历史文件。
+UTF-8跨边界或运行中半字符暂不消费，下一次接续；终态非法残字节用替换字符。offset超界416；文件未生成时仅offset=0返回空，正offset返回416，不能静默回退到0。当前不轮转或截断历史文件。
 
-JobDetail.vue每1.5秒轮询，raw logs最多保留最近500000个JS字符单元，再由displayLogs整体剥离ANSI CSI并归一化CRLF/CR，兼顾跨chunk转义序列。暂停仅暂停滚动，不暂停请求；复制清理后可见内容，裁剪时有提示。Vue文本插值避免把日志当HTML执行。generation防串任务，同代请求防重入，api.ts统一15秒超时。没有SSE、关键词高亮或虚拟滚动。
+详情页默认使用 **SSE实时日志**：`GET /api/jobs/{id}/logs/stream?offset=0`。fetch携带Authorization Bearer，再通过ReadableStream/TextDecoder流式消费；令牌不进query。原GET logs保留供只读工具与历史兼容，前端没有自动回退到日志轮询。服务端仍读取同一份持久日志，不需要复制到Redis或一次加载所有历史。
+
+| SSE规则 | 当前实现 |
+|---|---|
+| 恢复位置 | query offset默认0；Header `Last-Event-ID` 存在时优先。该应用限定最多32个非负ASCII数字，代表已消费的文件字节位置，不是时间或字符数 |
+| 预响应校验 | Bearer无效401、任务不存在404、位置超界416、非法Header/参数422；先校验，再发HTTP200流 |
+| 响应格式 | `text/event-stream`，开头 `retry: 1000`；`Cache-Control: no-cache, no-transform`、`X-Accel-Buffering: no` |
+| log事件 | 仅有非空content时发送，id=next_offset，data为原增量JSON（content/next_offset/eof/finished） |
+| end事件 | 业务终态且日志已读到EOF后发送；尾部先log全部排空，再end，end的content为空，沿用最终id，不重复最后内容 |
+| error事件 | 200之后发生文件截断/丢失/读取异常时发送 `{code,message}` 后关闭，不改变已发HTTP状态；没有新字节游标 |
+| 空闲与tail | 每0.5秒检查状态/文件；有大段历史时连续排空；空闲约10秒发 `: heartbeat` 注释，注释不作为业务事件 |
+
+```text
+retry: 1000
+
+event: log
+id: 6
+data: {"content":"hello\n","next_offset":6,"eof":true,"finished":false}
+
+: heartbeat
+
+event: end
+id: 6
+data: {"content":"","next_offset":6,"eof":true,"finished":true}
+
+```
+
+示例中的空白行是事件分隔符。客户端支持UTF-8网络分块、CR/LF/CRLF、注释、多行data；只有收到完整帧并完成onChunk消费后才推进游标，连接中断留下的半帧被丢弃，下次从已消费字节重读。它校验id与next_offset一致、游标不回退、安全整数与事件大小，不用网络chunk长度推断文件offset。这是沿用 [WHATWG SSE格式](https://html.spec.whatwg.org/multipage/server-sent-events.html) 的自定义fetch消费者，重连由应用实现，不声称浏览器EventSource自动管理了Bearer连接。
+
+网络异常按1/2/4/8/10秒退避，收到有效内容或连接稳定后重置；30秒没有任何字节（包括注释心跳）会中止失活连接并重连。401经统一鉴权处理清会话；其他4xx和协议错误停止自动重连，显示原因。416/日志截断不自动清零；用户可明确点“从头重新读取”，或点“重连”从当前已消费位置重试。切任务、登出、卸载会Abort旧连接；generation和连接身份检查拒绝旧流回调串入新任务。
+
+raw logs仍最多保留最近500000个JS字符单元，再由displayLogs整体剥离ANSI CSI、归一化CRLF/CR。暂停仅暂停自动滚动，仍持续消费SSE；复制清理后的当前可见内容，裁剪有提示。Vue文本插值不执行日志HTML。详情/资源继续每1.5秒轮询，指标每4轮约6秒，通用api.ts的15秒超时只作用普通请求；长流使用自己的30秒无字节看门狗。当前没有关键词高亮或虚拟滚动。
+
+API容器Uvicorn设置 `--timeout-graceful-shutdown 5`，避免活跃SSE无限阻止仅API重启；Ray、worker和训练容器保持独立。断线续传范围是同一持久日志的字节序列，不是自动跨轮转/截断的全局消息队列保证。
 
 ### YOLO指标
 
@@ -283,7 +317,7 @@ on_fit_epoch_end按epoch去重、过滤非有限值，将 `{epoch,timestamp,metr
 
 `GET /api/jobs/{id}/resources?after=0&limit=300` 的after/next_offset是**独立文件的字节游标**；limit默认300、范围1～1000，并有1MiB批次预算和单行上限。只消费完整JSONL行，运行中半行留待下轮；返回items、next_offset、eof、finished、latest，越界416。前端详情每1.5秒增量读、保留最近600条曲线，最新值比较时间戳取新；只有finished且eof才停资源请求，终态仍会读完剩余历史。
 
-代码：[main.py · logs/metrics/resources](../backend/app/main.py)、[containers.py · resource_sample](../backend/app/containers.py)、[worker.py · run_container/main](../backend/app/worker.py)、[JobDetail.vue](../frontend/src/views/JobDetail.vue)、[ResourceChart.vue](../frontend/src/components/ResourceChart.vue)、[MetricChart.vue](../frontend/src/components/MetricChart.vue)。
+代码：[main.py · logs/log_event/log_stream/metrics/resources](../backend/app/main.py)、[sse.ts · SSEParser/followJobLogs](../frontend/src/sse.ts)、[containers.py · resource_sample](../backend/app/containers.py)、[worker.py · run_container/main](../backend/app/worker.py)、[JobDetail.vue · connectLogs/poll](../frontend/src/views/JobDetail.vue)、[ResourceChart.vue](../frontend/src/components/ResourceChart.vue)、[MetricChart.vue](../frontend/src/components/MetricChart.vue)。
 
 <a id="s9"></a>
 ## 9. 持久化结构与文件说明
@@ -347,6 +381,7 @@ process/result/heartbeat/resource等快照使用临时文件、flush/fsync/repla
 | GET /api/jobs/{id} | 配置、状态、时间、停止原因、退出码、有效优先级、冻结等待、回填标记和最新聚合采样 |
 | POST /api/jobs/{id}/cancel | 保存取消意图，返回当前状态，终态重复取消保持 |
 | GET /api/jobs/{id}/logs | offset/limit字节有界读取，next_offset/eof/finished |
+| GET /api/jobs/{id}/logs/stream | Bearer SSE；Last-Event-ID优先query offset，log/end/error事件及10秒注释心跳 |
 | GET /api/jobs/{id}/metrics | 安全读取workspace，兼容历史根；最多最早1000条且有字节预算 |
 | GET /api/jobs/{id}/resources | after/limit增量读取资源JSONL，next_offset/eof/finished/latest |
 
@@ -354,7 +389,7 @@ process/result/heartbeat/resource等快照使用临时文件、flush/fsync/repla
 {"name":"YOLO CPU 演示","command":"python -m app.train --epochs 1 --imgsz 320 --batch 1","cpu":2,"memory_mb":1024,"timeout_seconds":1800,"priority":0}
 ```
 
-name1～100、command1～4096且去空白非空；CPU正整数不超过总量；memory_mb整数至少64且不超过总内存；时限1～86400秒；初始priority0～10。接口未知任务404、参数错误422、游标超界416、非法指标路径400、鉴权失败401。没有任务删除、失败自动重试、文件下载、SSE、指标POST、注册或Webhook路由。
+name1～100、command1～4096且去空白非空；CPU正整数不超过总量；memory_mb整数至少64且不超过总内存；时限1～86400秒；初始priority0～10。接口未知任务404、参数错误422、游标超界416、非法指标路径400、鉴权失败401。SSE在200之前返回这些校验错误，流开始后用error事件说明读异常。没有任务删除、失败自动重试、文件下载、指标POST、注册或Webhook路由。
 
 节点psutil数据是Docker Linux节点整体观察，不是可用账本，也不等于每任务stats。资源分配由reserved汇总，任务采样由可信worker的Docker stats取得，两者用途不同。
 
@@ -368,13 +403,13 @@ App.vue内置令牌门禁，不增加第五业务路由。登录先验证/auth/s
 | /overview | CPU卡片/环图、内存总/已分配/可用、节点实际负载、依赖状态、公平调度间隔和绕过阈值、最近任务 | 每3秒cluster与最近5任务并发查询，busy防重入 |
 | /jobs | 五状态、资源配额、初始/有效优先级、等待时长、回填标签、ID搜索和状态筛选、分页、详情/日志/取消 | 每3秒刷新，筛选回第1页，10/20/50每页，序号拒绝旧响应，终态/停止中禁重复取消 |
 | /submit | 默认CPU命令，名称/命令/CPU/内存/时限/初始优先级；CPU+内存快照及排队提示 | Element Plus校验，内存整数64～总量默认1024；submit trim后POST、loading、成功跳列表；资源快照只提示 |
-| /jobs/:id | 基础/执行/公平性信息、终端、真实聚合CPU/内存工作集/进程数/时间、双SVG资源曲线、Loss/mAP | 详情/日志/资源1.5秒，指标每4轮约6秒；两文件游标独立；终态且EOF停止对应日志/资源请求 |
+| /jobs/:id | 基础/执行/公平性信息、SSE终端、真实聚合CPU/内存工作集/进程数/时间、双SVG资源曲线、Loss/mAP | 日志为可恢复SSE，详情/资源1.5秒、指标约6秒；日志/资源各用独立字节游标，日志end与资源终态EOF分别结束 |
 
-JobDetail.vue的poll/generation/busyGeneration防请求串任务和重入；displayLogs/toggleFollow/copyLogs控制可读日志，raw上限500k字符不改变byte offset；资源曲线保留最近600条并使用Unix秒时间轴，单核100%不截断到100%。ResourceChart.vue区分配置硬限与实测值，空任务不生成假数据。
+JobDetail.vue的connectLogs/AbortController/generation防旧流串任务，poll/busyGeneration防普通请求重入；displayLogs/toggleFollow/copyLogs控制可读日志，raw上限500k字符不改变byte offset；终端显示连接中/已连接/重连中/读取完成/已停止，并提供手动重连与显式从头读取。资源曲线保留最近600条并使用Unix秒时间轴，单核100%不截断到100%。ResourceChart.vue区分配置硬限与实测值，空任务不生成假数据。
 
 Submit.vue规则：名称必填非空白≤100，命令必填非空白≤4096，CPU≥1，内存整数≥64且≤集群总量，超时1～86400；数字控件限制整数范围，初始优先级0～10。表单novalidate使用Element校验，避免原生step与默认值冲突。可用资源同时比较CPU和内存，最终调度仍重新判断。
 
-代码：[App.vue](../frontend/src/App.vue)、[api.ts](../frontend/src/api.ts)、[四页views](../frontend/src/views)、[ResourceChart.vue](../frontend/src/components/ResourceChart.vue)、[MetricChart.vue](../frontend/src/components/MetricChart.vue)、[StatusBadge.vue](../frontend/src/components/StatusBadge.vue)。
+代码：[App.vue](../frontend/src/App.vue)、[api.ts](../frontend/src/api.ts)、[sse.ts](../frontend/src/sse.ts)、[四页views](../frontend/src/views)、[ResourceChart.vue](../frontend/src/components/ResourceChart.vue)、[MetricChart.vue](../frontend/src/components/MetricChart.vue)、[StatusBadge.vue](../frontend/src/components/StatusBadge.vue)。
 
 整站没有深色开关、浏览器任务通知、日志关键词高亮或虚拟滚动；终端深色视觉/ANSI清理不冒充这些特性。路由静态导入和Element整包注册保留首包优化空间。
 
@@ -383,7 +418,7 @@ Submit.vue规则：名称必填非空白≤100，命令必填非空白≤4096，
 
 | 层级 | 当前实现/设计 | 边界 |
 |---|---|---|
-| P0后端 | 全部任务/资源/日志接口、CPU排队回收、五状态、心跳、超时、日志与元数据持久化、API重启对账 | 单机单协调器，SSE可选未做 |
+| P0后端 | 全部任务/资源/日志接口、CPU排队回收、五状态、心跳、超时、日志与元数据持久化、API重启对账；可选SSE已实现 | 单机单协调器；SSE与原offset GET并存，Bearer Header续传 |
 | P0前端 | 四页、筛选分页、提交跳转、标签、详情、日志暂停滚动和复制 | 真实API，完整历史在服务器 |
 | P1优先级 | 初始priority、等待老化、同分FIFO、有限回填和持久绕过计数 | 无抢占、无最大等待SLA |
 | P1训练指标 | 每epoch持久化、GET安全读取、Loss/mAP SVG | 无外部POST存储/游标/长期指标服务 |
@@ -400,6 +435,18 @@ P2口述提纲见 [design-p2.md](design-p2.md)。本表区分“当前实现”�
 <a id="s13"></a>
 
 ## 13. 实测证据与演示顺序
+
+### SSE实时日志升级实测（2026-11-02）
+
+| 证据 | 本轮实际结果 |
+|---|---|
+| [sse-unit-results.json](sse-unit-results.json) | 后端Linux全量48 passed、无skip、52.68秒，含真实Docker集成；前端13 passed，生产构建成功19.01秒 |
+| [sse-results.json](sse-results.json) | 经Vite代理四组通过：鉴权/预响应错误码，空闲10秒心跳、pending→running同流及尾排空，Last-Event-ID续传无重复/丢失及API重启，416/422验证；活跃流重启API用时5.64秒，Ray不动，结束双配额归零 |
+| [sse-browser-results.json](sse-browser-results.json) | 任务cfde268bf3984f4f实际建立两条流，URL只有offset0/1035且无凭据；API重启自动续传，暂停/复制成功，取消后收到end；DOM5004字符与持久日志去ANSI/CR后完全一致、demo只启动一次 |
+| [实时截图](screenshots/sse-live.png) / [完成截图](screenshots/sse-finished.png) | 连接状态、续传、可读日志与完成状态的本机浏览器证据 |
+| [首轮报告](sse-results-first-run.json) | 首轮worker Docker SDK发生5秒ReadTimeout导致任务失败，未计全通过；后续对失败任务的历史SSE与持久日志诊断一致（170字符）。未修改worker/调度器掩盖瞬时执行器超时，第二轮才四组完整通过 |
+
+本轮只更新API容器与前端，保留Ray、Redis和既有训练执行链路。只把实际完成的重启和断线场景列为通过，不把同一文件游标续传扩张为跨轮转、永久保留或全局恰好一次语义。
 
 ### 本次隔离与公平调度升级实测（2026-11-01）
 
@@ -444,6 +491,8 @@ backend\.venv\Scripts\python.exe scripts\concurrency.py
 backend\.venv\Scripts\python.exe scripts\recovery.py --docker
 # 新增资源隔离、公平调度；--aging会实际等待默认60秒老化间隔：
 backend\.venv\Scripts\python.exe scripts\isolation_fairness.py --aging
+# SSE经Vite代理、带活跃连接的API重启复验：
+backend\.venv\Scripts\python.exe scripts\sse_smoke.py --restart-api --restart-delay 20
 ```
 
 setup默认仅为宿主安装requests/psutil及前端依赖；训练栈在Docker镜像内。预缓存脚本的模型镜像传输验证官方SHA256，coco128来源为Ultralytics的Kaggle数据集，来源和摘要见 [training-assets.json](training-assets.json)。Arial仅从本机字体复制到被忽略的运行目录。原生排查需要 `setup.ps1 -Native`，但不推荐作为稳定演示路径。
@@ -464,9 +513,9 @@ setup默认仅为宿主安装requests/psutil及前端依赖；训练栈在Docker
 | 4更严格公平性 | 已实现不封顶老化和最多3次绕过，但未预测队首最早启动时间，无抢占或分用户公平份额 | 需要等待SLA时做保守reservation/预计时长模型；多用户再做公平队列和配额，确有价值才做检查点抢占，避免回填侵蚀承诺 | B |
 | 5扩展与清理 | 单协调器、RLock内外部IO、SQLite和队列fetchall；已停止训练容器保留证据，尚无保留策略 | 分批队列/缩短IO临界区，独立协调器、事务数据库、选主fencing、节点代理；按标签和保留期回收已终态容器，绝不全局prune | B |
 | 6指标与采样历史 | 指标最早1000条/约1MiB，无指标POST/游标；采样JSONL持续增长，前端仅600条 | epoch/记录游标、下采样与归档；远端上报需认证和幂等；保留工作集/原始usage语义，不能改名RSS | B |
-| 7日志与产物 | 服务器日志无限追加，物理byte offset，模型无保留/下载授权；前端500k窗口非虚拟滚动 | 磁盘配额、归档压缩、授权下载；轮转引入分片ID+逻辑游标，不能直接截断破坏已有offset；需要时增加虚拟滚动/SSE | B/C |
+| 7日志与产物 | 已有Bearer SSE/断线续传；服务器日志无限追加、物理byte offset，模型无保留/下载授权；前端500k窗口非虚拟滚动 | 磁盘配额、归档压缩、授权下载；轮转引入分片ID+逻辑游标而非直接截断；连接规模增长时增加并发流额度和背压，必要时虚拟滚动 | B/C |
 | 8依赖复现 | 核心Python版本固定，有Linux快照；控制依赖通过requirements-control.txt单独锁定Docker SDK7.1并复用Torch缓存层；基础镜像/Redis标签仍浮动 | 完整锁文件、镜像digest、受信制品缓存和摘要、固定升级/回滚与兼容检查 | B |
-| 9前端效率 | 静态路由/Element整包，固定轮询；终态日志和资源停止后，详情/指标仍请求；错误无退避，ANSI每次重算窗口 | 路由懒加载/按需组件、后台页降频、终态最后同步后停不必要请求、失败退避；分块处理跨chunk ANSI和虚拟滚动 | C |
+| 9前端效率 | SSE已有30秒看门狗和有上限重连退避；详情/指标/资源仍固定轮询，终态后详情/指标仍请求；ANSI每次重算窗口 | 路由懒加载/按需组件、后台页降频、普通轮询失败退避、终态最后同步后停不必要请求；分块处理跨chunk ANSI和虚拟滚动 | C |
 
 参考：[Ray逻辑资源](https://docs.ray.io/en/latest/ray-core/scheduling/resources.html)、[SQLite WAL](https://sqlite.org/wal.html)、[FastAPI workers](https://fastapi.tiangolo.com/deployment/server-workers/)。本项目不能直接调大Uvicorn workers，是应用代码事实：每个lifespan启动调度器，同数据目录文件锁会拒绝第二实例；应先拆独立调度器再扩API。
 

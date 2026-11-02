@@ -1,0 +1,25 @@
+{
+  "timestamp_utc": "2026-11-02T07:01:39.377681+00:00",
+  "passed": false,
+  "base_url": "http://127.0.0.1:5173/api",
+  "checks": [
+    {
+      "check": "authentication_and_preflight_status_codes",
+      "passed": true
+    }
+  ],
+  "error": "AssertionError: ",
+  "jobs": [
+    "374e685b67094ee2",
+    "12e97a94ea494517"
+  ],
+  "diagnosis": {
+    "job_id": "12e97a94ea494517",
+    "status": "failed",
+    "exit_code": 1,
+    "worker_error": "worker error: ReadTimeout: UnixHTTPConnectionPool(host='localhost', port=None): Read timed out. (read timeout=5)",
+    "reason": "Worker Docker Engine read timeout before demonstration workload started; no scheduler or worker changes made for this SSE feature.",
+    "subsequent_history_sse_matched_persisted_log": true,
+    "diagnostic_log_characters": 170
+  }
+}

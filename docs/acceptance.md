@@ -14,6 +14,7 @@
 | worker 心跳与僵死检测 | worker写Redis、scheduler核对 | `app.demo --sleep 120 --freeze-heartbeat 3` |
 | 最大运行时间 | scheduler + worker双侧检查 | 运行40秒任务，timeout设3秒 |
 | 每任务日志文件、offset增量 | worker输出文件、API有界读取 | 使用17字节分块拼接中文日志，不能重复/缺失 |
+| 可选SSE实时日志（已实现） | main.py log_stream、frontend/src/sse.ts | Bearer Header、完整事件字节游标、心跳、断线续读与end前尾排空 |
 | 后端重启不丢任务和资源 | SQLite WAL、固定submission ID、启动对账 | 训练中仅重启API，核对同一Ray Job接管 |
 | 集群总览 | `/overview` | 资源卡片、节点表、利用率进度条 |
 | 任务列表 | `/jobs` | 五种标签、筛选、ID搜索、分页、查看和取消 |
@@ -73,6 +74,7 @@ Docker方案需确认API容器StartedAt变化、Ray容器ID与StartedAt不变、
 - 列表：切换所有状态标签，按ID搜索，换页、换每页数量，筛选后回到第一页。
 - 取消：pending与running都可取消；终态不可误操作；停止请求后等确认再显示终态。
 - 详情：重新进入任务能显示历史日志，滚动不被强制抢回；开启自动滚动后跟随新日志；复制结果与所见一致。
+- 日志连接：显示“SSE已连接/重连中/读取完成”；暂停只停滚动；切换任务、登出和卸载会终止旧流，不混入旧任务日志。
 - 切换不同任务时，不混入上一个任务的异步日志；日志文本中的 `<tag>` 以文本显示。
 - 小窗口能阅读关键字段，按钮可通过键盘访问。
 
@@ -94,6 +96,19 @@ backend\.venv\Scripts\python.exe scripts\recovery.py --docker --output docs/isol
 新增脚本验证匿名401、operator会话、非root UID1000、无Docker socket/平台数据库/令牌环境、仅loopback网络、实际CPU/内存/PID限制、资源字节游标、64 MiB真实OOM失败137及回收、回填和真实老化。脚本保留退出容器证据；检查Engine的OOMKilled，不能仅用手动exit137冒充内存超限。
 
 手动查看资源详情的CPU/内存工作集曲线；新任务内存限制默认1024 MiB，可调整至平台总量以内。取消、心跳超时、运行超时、OOM、正常退出后均需确认训练容器停止并释放双配额。Docker检查失败必须保留预留，不能当作空闲。
+
+## SSE实时日志新增验收
+
+```powershell
+# 平台空闲、前端5173和后端运行时；脚本自动读取本机Bearer令牌，不将令牌放URL。
+backend\.venv\Scripts\python.exe scripts\sse_smoke.py --restart-api --restart-delay 20
+```
+
+脚本走Vite代理，验证匿名401、未知任务404、游标越界416、非法Last-Event-ID 422均在HTTP200前返回；排队期间10秒心跳，pending到running保持同一流；完整尾日志先log再空content end；断线用Header字节位置续传，无重复/丢失。API有活跃流时只重启API，确认Ray与执行ID不变，最终CPU/内存都回收。Last-Event-ID最多32个非负ASCII数字且优先query offset。
+
+浏览器补测：观察SSE状态、启动后重启API并自动续接，确认请求URL只有offset、不含凭据；暂停滚动仍有新日志，恢复/复制可用；取消任务后收到end并显示读取完成。主动离线/网络异常按1/2/4/8/10秒退避；30秒无任何字节则重连。416不自动归零，用户明确选择“从头重新读取”。详情/资源仍1.5秒轮询、指标约6秒；这不是把所有页面请求都改成SSE。
+
+最终证据：[sse-results.json](sse-results.json) 四组通过、API重启5.64秒；[sse-browser-results.json](sse-browser-results.json) 两次连接恢复、5004字符与持久日志清理后完全一致，任务只启动一次。测试/构建见 [sse-unit-results.json](sse-unit-results.json)。首轮worker Engine超时导致任务失败，保留 [首轮报告](sse-results-first-run.json)，不能把日志内容一致误称整轮训练通过。
 
 ## 记录规则
 

@@ -1,0 +1,59 @@
+{
+  "timestamp_utc": "2026-11-02T07:05:17.064810+00:00",
+  "passed": true,
+  "base_url": "http://127.0.0.1:5173/api",
+  "checks": [
+    {
+      "check": "authentication_and_preflight_status_codes",
+      "passed": true
+    },
+    {
+      "check": "idle_heartbeat_pending_path_and_final_tail",
+      "passed": true,
+      "job_id": "9f04db8ab84d4059",
+      "bytes": 497
+    },
+    {
+      "check": "header_resume_without_duplicate_or_missing_logs",
+      "passed": true,
+      "job_id": "26800ea194d44752",
+      "bytes": 1809,
+      "api_restarted": true
+    },
+    {
+      "check": "resume_validation_before_http_200",
+      "passed": true
+    }
+  ],
+  "api_restart_seconds": 5.64,
+  "final_cluster": {
+    "total_cpus": 2,
+    "allocated_cpus": 0,
+    "available_cpus": 2,
+    "total_memory_mb": 2048,
+    "allocated_memory_mb": 0,
+    "available_memory_mb": 2048,
+    "aging_interval_seconds": 60.0,
+    "backfill_max_bypass": 3,
+    "execution_mode": "docker",
+    "pending_jobs": 0,
+    "running_jobs": 0,
+    "redis_ok": true,
+    "ray_ok": true,
+    "nodes": [
+      {
+        "id": "local",
+        "name": "本机 CPU 节点",
+        "total_cpus": 2,
+        "allocated_cpus": 0,
+        "cpu_percent": 0.0,
+        "memory_percent": 76.3
+      }
+    ]
+  },
+  "jobs": [
+    "7086cce66ae2492e",
+    "9f04db8ab84d4059",
+    "26800ea194d44752"
+  ]
+}

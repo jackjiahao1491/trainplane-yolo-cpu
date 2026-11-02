@@ -1,0 +1,22 @@
+{
+  "timestamp_utc": "2026-11-02T07:18:33.173858+00:00",
+  "passed": true,
+  "job_id": "cfde268bf3984f4f",
+  "job_status": "cancelled",
+  "browser_stream_connections": 2,
+  "urls_without_credentials": [
+    "http://127.0.0.1:5173/api/jobs/cfde268bf3984f4f/logs/stream?offset=0",
+    "http://127.0.0.1:5173/api/jobs/cfde268bf3984f4f/logs/stream?offset=1035"
+  ],
+  "browser_text_matches_persisted_log": true,
+  "log_characters": 5004,
+  "demo_start_count": 1,
+  "pause_scroll_preserved_stream": true,
+  "copy_button_succeeded": true,
+  "api_restart_auto_reconnected": true,
+  "finished_event_received": true,
+  "screenshots": [
+    "screenshots/sse-live.png",
+    "screenshots/sse-finished.png"
+  ]
+}
