@@ -225,6 +225,7 @@ svg { flex-shrink: 0; }
 .terminal-footer > span { display: flex; align-items: center; gap: 6px; }
 .paused-label { color: #c1a364; }
 .terminal-error, .terminal-notice { padding: 10px 21px; font-size: 10px; line-height: 1.7; background: #594336; color: #e2c4a0; }
+.log-recovery-button { border: 1px solid #a08567; border-radius: 4px; background: transparent; color: #ffe0b9; padding: 3px 8px; margin-left: 12px; font-size: 10px; }
 .terminal-notice { background: #273f47; color: #adc2c7; }
 .metrics-panel .panel-heading { padding-bottom: 11px; }
 .metrics-empty { display: grid; place-items: center; color: #9daeb3; font-size: 11px; padding: 38px 20px 45px; }

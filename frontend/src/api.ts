@@ -70,6 +70,32 @@ export function signOut() {
 
 interface SessionResult { authenticated: true; username: string }
 
+export class ApiError extends Error {
+  constructor(public status: number, message: string) { super(message) }
+}
+
+export function requestHeaders(initial?: HeadersInit) {
+  const headers = new Headers(initial)
+  headers.set('Content-Type', 'application/json')
+  if (accessToken && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${accessToken}`)
+  return headers
+}
+
+export async function checkResponse(response: Response, headers: Headers) {
+  if (response.status === 401) {
+    // A late response from an older session must not clear a newly verified token.
+    if (!session.authenticated || headers.get('Authorization') === `Bearer ${accessToken}`) signOut()
+    throw new ApiError(401, '访问令牌无效或已失效，请重新登录')
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    const detail = data?.detail
+    const message = typeof detail === 'string' ? detail
+      : Array.isArray(detail) ? detail.map(item => item.msg).join('；') : `请求失败（${response.status}）`
+    throw new ApiError(response.status, message)
+  }
+}
+
 export async function signIn(token: string) {
   const value = token.trim()
   if (!value) throw new Error('请输入访问令牌')
@@ -94,26 +120,13 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), 15000)
   try {
-    const headers = new Headers(options.headers)
-    headers.set('Content-Type', 'application/json')
-    if (accessToken && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${accessToken}`)
+    const headers = requestHeaders(options.headers)
     const response = await fetch(`/api${path}`, {
       ...options,
       signal: controller.signal,
       headers,
     })
-    if (response.status === 401) {
-      // A late response from an older session must not clear a newly verified token.
-      if (!session.authenticated || headers.get('Authorization') === `Bearer ${accessToken}`) signOut()
-      throw new Error('访问令牌无效或已失效，请重新登录')
-    }
-    if (!response.ok) {
-      const data = await response.json().catch(() => null)
-      const detail = data?.detail
-      const message = typeof detail === 'string' ? detail
-        : Array.isArray(detail) ? detail.map(item => item.msg).join('；') : `请求失败（${response.status}）`
-      throw new Error(message)
-    }
+    await checkResponse(response, headers)
     return await response.json() as T
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw new Error('请求超时，请检查后端服务')
