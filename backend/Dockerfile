@@ -9,4 +9,4 @@ RUN pip install --no-cache-dir --timeout 120 -r requirements.txt
 COPY requirements-control.txt /app/requirements-control.txt
 RUN pip install --no-cache-dir --timeout 120 -r /app/requirements-control.txt
 COPY app /app/app
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--timeout-graceful-shutdown", "5"]

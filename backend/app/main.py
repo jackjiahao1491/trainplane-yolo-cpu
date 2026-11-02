@@ -1,3 +1,4 @@
+import asyncio
 import json
 import math
 import os
@@ -8,9 +9,11 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import psutil
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from . import config, store
 from .auth import authorize, get_token
@@ -36,7 +39,7 @@ async def lifespan(app):
 app = FastAPI(title='TrainPlane · CPU Training Platform', version='1.1.0', lifespan=lifespan,
               dependencies=[Depends(authorize)])
 app.add_middleware(CORSMiddleware, allow_origins=['http://127.0.0.1:5173', 'http://localhost:5173'],
-                   allow_methods=['GET', 'POST'], allow_headers=['Content-Type', 'Authorization'])
+                   allow_methods=['GET', 'POST'], allow_headers=['Content-Type', 'Authorization', 'Last-Event-ID'])
 
 
 def public(job):
@@ -168,7 +171,64 @@ def logs(job_id: str, offset: int = Query(0, ge=0), limit: int = Query(65536, ge
         return {'content': content, 'next_offset': next_offset, 'eof': next_offset >= size,
                 'finished': job['status'] in TERMINAL}
     except FileNotFoundError:
+        if offset:
+            raise HTTPException(416, '日志尚不存在或已被移除，请从0重新读取')
         return {'content': '', 'next_offset': 0, 'eof': True, 'finished': job['status'] in TERMINAL}
+
+
+LOG_STREAM_POLL_SECONDS = 0.5
+LOG_STREAM_HEARTBEAT_SECONDS = 10
+
+
+def log_event(event, payload):
+    cursor = f"id: {payload['next_offset']}\n" if 'next_offset' in payload else ''
+    return f'event: {event}\n{cursor}data: {json.dumps(payload, ensure_ascii=False)}\n\n'
+
+
+@app.get('/api/jobs/{job_id}/logs/stream', response_class=StreamingResponse,
+         responses={200: {'content': {'text/event-stream': {'schema': {'type': 'string'}}}}})
+def log_stream(job_id: str, request: Request, offset: int = Query(0, ge=0),
+               last_event_id: str | None = Header(None, max_length=32)):
+    if last_event_id is not None:
+        if not last_event_id or not last_event_id.isascii() or not last_event_id.isdecimal():
+            raise HTTPException(422, 'Last-Event-ID必须为非负十进制字节位置')
+        offset = int(last_event_id)
+    # Validate before sending HTTP 200. Authentication remains the app's Bearer dependency.
+    logs(job_id, offset=offset, limit=65536)
+
+    async def stream():
+        cursor = offset
+        heartbeat_at = time.monotonic()
+        yield 'retry: 1000\n\n'
+        while not await request.is_disconnected():
+            try:
+                # Re-read status BEFORE the file, and resolve the current attempt path
+                # each time. A terminal snapshot guarantees the worker has closed its log.
+                chunk = await run_in_threadpool(logs, job_id, cursor, 65536)
+            except HTTPException as exc:
+                code = {404: 'job_missing', 416: 'log_truncated'}.get(exc.status_code, 'log_read_error')
+                yield log_event('error', {'code': code, 'message': str(exc.detail)})
+                return
+            except (OSError, ValueError):
+                yield log_event('error', {'code': 'log_read_error', 'message': '日志暂不可读，请重新连接'})
+                return
+            if chunk['content']:
+                cursor = chunk['next_offset']
+                yield log_event('log', chunk)
+                heartbeat_at = time.monotonic()
+            if chunk['finished'] and chunk['eof']:
+                # Final content was already delivered by log; end never repeats it.
+                yield log_event('end', {**chunk, 'content': ''})
+                return
+            if chunk['content'] and not chunk['eof']:
+                continue
+            if time.monotonic() - heartbeat_at >= LOG_STREAM_HEARTBEAT_SECONDS:
+                yield ': heartbeat\n\n'
+                heartbeat_at = time.monotonic()
+            await asyncio.sleep(LOG_STREAM_POLL_SECONDS)
+
+    return StreamingResponse(stream(), media_type='text/event-stream',
+                             headers={'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no'})
 
 
 @app.get('/api/jobs/{job_id}/metrics')
